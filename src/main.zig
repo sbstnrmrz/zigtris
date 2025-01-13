@@ -10,7 +10,6 @@ const sg = sokol.gfx;
 const sapp = sokol.app;
 const sglue = sokol.glue;
 const m = @import("math.zig");
-const shader_rect_color = @import("shaders/rect_color.glsl.zig");
 const shader_quad = @import("shaders/quad.glsl.zig");
 const Vec4 = m.Vec4;
 
@@ -101,10 +100,10 @@ export fn frame() void {
     var color = ColorRGB{ .r = 255, .g = 0, .b = 0 };
 
     sg.updateBuffer(state.bind.vertex_buffers[0], sg.asRange(&[_]f32{
-        rect_x,         rect_y,          0.0, 1.0, color.greenToFloat(), color.blueToFloat(), 1.0,
-        rect_x + width, rect_y,          0.0, 1.0, color.greenToFloat(), color.blueToFloat(), 1.0,
-        rect_x,         rect_y + height, 0.0, 1.0, color.greenToFloat(), color.blueToFloat(), 1.0,
-        rect_x + width, rect_y + height, 0.0, 1.0, color.greenToFloat(), color.blueToFloat(), 1.0,
+        rect_x,         rect_y,          0.0, color.redToFloat(), color.greenToFloat(), color.blueToFloat(), 1.0,
+        rect_x + width, rect_y,          0.0, color.redToFloat(), color.greenToFloat(), color.blueToFloat(), 1.0,
+        rect_x,         rect_y + height, 0.0, color.redToFloat(), color.greenToFloat(), color.blueToFloat(), 1.0,
+        rect_x + width, rect_y + height, 0.0, color.redToFloat(), color.greenToFloat(), color.blueToFloat(), 1.0,
     }));
 
     sg.applyPipeline(state.pip);
