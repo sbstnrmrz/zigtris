@@ -26,19 +26,15 @@ const state = struct {
     var quad_vertices = ArrayList(f32).init(allocator);
     var quad_indices = ArrayList(u16).init(allocator);
     var quad_count: u32 = 0;
+    var prng: std.Random.DefaultPrng = undefined;
 };
 
-fn RGBToFloat(c: u8) f32 {
+fn rgbToFloat(c: u8) f32 {
     return @as(f32, @floatFromInt(c)) / 255.0;
 }
 
 fn randColor() ColorRGB {
-    var prng = std.Random.DefaultPrng.init(blk: {
-        var seed: u64 = undefined;
-        std.posix.getrandom(std.mem.asBytes(&seed)) catch unreachable;
-        break :blk seed;
-    });
-    const rand = prng.random();
+    const rand = state.prng.random();
 
     var res = ColorRGB{};
     res.r = rand.intRangeAtMost(u8, 0, 255);
@@ -49,9 +45,9 @@ fn randColor() ColorRGB {
 }
 
 const ColorRGB = struct {
-    r: u8 = 0,
-    g: u8 = 0,
-    b: u8 = 0,
+    r: u8,
+    g: u8,
+    b: u8,
 
     fn redToFloat(self: *ColorRGB) f32 {
         return @as(f32, @floatFromInt(self.r)) / 255.0;
@@ -73,10 +69,10 @@ const Quad = struct {
 
 fn render_quad(quad: Quad, color: ColorRGB) void {
     const vertices = [_]f32{
-        quad.x,          quad.y,          0.0, RGBToFloat(color.r), RGBToFloat(color.g), RGBToFloat(color.b), 1.0,
-        quad.x + quad.w, quad.y,          0.0, RGBToFloat(color.r), RGBToFloat(color.g), RGBToFloat(color.b), 1.0,
-        quad.x,          quad.y + quad.h, 0.0, RGBToFloat(color.r), RGBToFloat(color.g), RGBToFloat(color.b), 1.0,
-        quad.x + quad.h, quad.y + quad.h, 0.0, RGBToFloat(color.r), RGBToFloat(color.g), RGBToFloat(color.b), 1.0,
+        quad.x,          quad.y,          0.0, rgbToFloat(color.r), rgbToFloat(color.g), rgbToFloat(color.b), 1.0,
+        quad.x + quad.w, quad.y,          0.0, rgbToFloat(color.r), rgbToFloat(color.g), rgbToFloat(color.b), 1.0,
+        quad.x,          quad.y + quad.h, 0.0, rgbToFloat(color.r), rgbToFloat(color.g), rgbToFloat(color.b), 1.0,
+        quad.x + quad.w, quad.y + quad.h, 0.0, rgbToFloat(color.r), rgbToFloat(color.g), rgbToFloat(color.b), 1.0,
     };
 
     for (vertices) |v| {
@@ -91,6 +87,58 @@ fn render_quad(quad: Quad, color: ColorRGB) void {
     state.quad_indices.append((@as(u16, @intCast(state.quad_count)) * 4) + 3) catch unreachable;
 
     state.quad_count += 1;
+}
+
+const Vec2 = struct {
+    x: f32 = 0,
+    y: f32 = 0,
+};
+
+const Piece = struct {
+    pos: [4]Vec2,
+    offset: Vec2,
+};
+
+const Shapes = enum {
+    const I = Piece{ .pos = .{ .{ .x = 0, .y = 1 }, .{ .x = 1, .y = 1 }, .{ .x = 2, .y = 1 }, .{ .x = 3, .y = 1 } }, .offset = .{ .x = 0, .y = 0 } };
+    const O = Piece{ .pos = .{ .{ .x = 1, .y = 1 }, .{ .x = 2, .y = 1 }, .{ .x = 1, .y = 2 }, .{ .x = 2, .y = 2 } }, .offset = .{ .x = 0, .y = 0 } };
+    const T = Piece{ .pos = .{ .{ .x = 1, .y = 0 }, .{ .x = 0, .y = 1 }, .{ .x = 1, .y = 1 }, .{ .x = 2, .y = 1 } }, .offset = .{ .x = 0, .y = 0 } };
+    const S = Piece{ .pos = .{ .{ .x = 1, .y = 0 }, .{ .x = 2, .y = 0 }, .{ .x = 0, .y = 1 }, .{ .x = 1, .y = 1 } }, .offset = .{ .x = 0, .y = 0 } };
+    const Z = Piece{ .pos = .{ .{ .x = 0, .y = 0 }, .{ .x = 1, .y = 0 }, .{ .x = 1, .y = 1 }, .{ .x = 2, .y = 1 } }, .offset = .{ .x = 0, .y = 0 } };
+    const J = Piece{ .pos = .{ .{ .x = 0, .y = 1 }, .{ .x = 0, .y = 2 }, .{ .x = 1, .y = 2 }, .{ .x = 2, .y = 2 } }, .offset = .{ .x = 0, .y = 0 } };
+    const L = Piece{ .pos = .{ .{ .x = 2, .y = 1 }, .{ .x = 0, .y = 2 }, .{ .x = 1, .y = 2 }, .{ .x = 2, .y = 2 } }, .offset = .{ .x = 0, .y = 0 } };
+};
+
+const game = struct {
+    var current_piece: Piece = undefined;
+    const cell_size: i32 = 16;
+    const rows: i32 = 20;
+    const cols: i32 = 10;
+    const playfield_pos = Vec2{ .x = @as(f32, @floatFromInt(win_width - cols * cell_size)) / 2.0, .y = @as(f32, @floatFromInt(win_height - rows * cell_size)) / 2.0 };
+};
+
+fn init_game() void {
+    game.current_piece = getRandomPiece();
+}
+
+fn getRandomPiece() Piece {
+    const rand = state.prng.random();
+    const choices = [_]Piece{ Shapes.I, Shapes.O, Shapes.T, Shapes.S, Shapes.Z, Shapes.J, Shapes.L };
+    const index = rand.intRangeLessThan(u8, 0, choices.len);
+    return choices[index];
+}
+
+fn render_frame() void {
+    const p = game.current_piece;
+    for (0..4) |i| {
+        const cell = Quad{ .x = p.pos[i].x * game.cell_size, .y = p.pos[i].y * game.cell_size, .w = game.cell_size, .h = game.cell_size };
+        render_quad(cell, .{ .r = 255, .g = 0, .b = 0 });
+    }
+
+    // renders playfield
+    render_quad(.{ .x = game.playfield_pos.x - game.cell_size, .y = game.playfield_pos.y, .w = game.cell_size, .h = game.cell_size * game.rows }, .{ .r = 255, .g = 255, .b = 255 });
+    render_quad(.{ .x = game.playfield_pos.x + game.cell_size * (game.cols), .y = game.playfield_pos.y, .w = game.cell_size, .h = game.cell_size * game.rows }, .{ .r = 255, .g = 255, .b = 255 });
+    render_quad(.{ .x = game.playfield_pos.x - game.cell_size, .y = game.playfield_pos.y + game.rows * game.cell_size, .w = game.cell_size * (game.cols + 2), .h = game.cell_size }, .{ .r = 255, .g = 255, .b = 255 });
 }
 
 export fn init() void {
@@ -125,6 +173,14 @@ export fn init() void {
         .load_action = .CLEAR,
         .clear_value = .{ .r = 0, .g = 0, .b = 0, .a = 1 },
     };
+
+    state.prng = std.Random.DefaultPrng.init(blk: {
+        var seed: u64 = undefined;
+        std.posix.getrandom(std.mem.asBytes(&seed)) catch unreachable;
+        break :blk seed;
+    });
+
+    init_game();
 }
 
 export fn frame() void {
@@ -138,13 +194,15 @@ export fn frame() void {
 
     sg.beginPass(.{ .action = state.pass_action, .swapchain = sglue.swapchain() });
 
-    for (0..25) |i| {
-        for (0..25) |j| {
-            const _i = @as(f32, @floatFromInt(i));
-            const _j = @as(f32, @floatFromInt(j));
-            render_quad(.{ .x = 32 * _j, .y = 32 * _i, .w = 32, .h = 32 }, randColor());
-        }
-    }
+    //  for (0..25) |i| {
+    //      for (0..25) |j| {
+    //          const _i = @as(f32, @floatFromInt(i));
+    //          const _j = @as(f32, @floatFromInt(j));
+    //          render_quad(.{ .x = 32 * _j, .y = 32 * _i, .w = 32, .h = 32 }, randColor());
+    //      }
+    //  }
+
+    render_frame();
 
     if (state.quad_vertices.items.len > 0) {
         sg.updateBuffer(state.bind.vertex_buffers[0], sg.asRange(state.quad_vertices.items));
