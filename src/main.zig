@@ -104,16 +104,27 @@ const Piece = struct {
     pos: [4]Vec2,
     offset: Vec2,
     id: ShapesID,
+    color: ColorRGB,
+};
+
+const Colors = enum {
+    const red = ColorRGB{ .r = 187, .g = 54, .b = 42 };
+    const green = ColorRGB{ .r = 152, .g = 151, .b = 54 };
+    const yellow = ColorRGB{ .r = 206, .g = 156, .b = 62 };
+    const blue = ColorRGB{ .r = 85, .g = 131, .b = 135 };
+    const pink = ColorRGB{ .r = 166, .g = 102, .b = 133 };
+    const aquamarine = ColorRGB{ .r = 116, .g = 156, .b = 111 };
+    const orange = ColorRGB{ .r = 214, .g = 93, .b = 14 };
 };
 
 const Shapes = enum {
-    const I = Piece{ .pos = .{ .{ .x = 0, .y = 1 }, .{ .x = 1, .y = 1 }, .{ .x = 2, .y = 1 }, .{ .x = 3, .y = 1 } }, .offset = .{ .x = 0, .y = 0 }, .id = ShapesID.I };
-    const O = Piece{ .pos = .{ .{ .x = 1, .y = 1 }, .{ .x = 2, .y = 1 }, .{ .x = 1, .y = 2 }, .{ .x = 2, .y = 2 } }, .offset = .{ .x = 0, .y = 0 }, .id = ShapesID.O };
-    const T = Piece{ .pos = .{ .{ .x = 1, .y = 0 }, .{ .x = 0, .y = 1 }, .{ .x = 1, .y = 1 }, .{ .x = 2, .y = 1 } }, .offset = .{ .x = 0, .y = 0 }, .id = ShapesID.T };
-    const S = Piece{ .pos = .{ .{ .x = 1, .y = 0 }, .{ .x = 2, .y = 0 }, .{ .x = 0, .y = 1 }, .{ .x = 1, .y = 1 } }, .offset = .{ .x = 0, .y = 0 }, .id = ShapesID.S };
-    const Z = Piece{ .pos = .{ .{ .x = 0, .y = 0 }, .{ .x = 1, .y = 0 }, .{ .x = 1, .y = 1 }, .{ .x = 2, .y = 1 } }, .offset = .{ .x = 0, .y = 0 }, .id = ShapesID.Z };
-    const J = Piece{ .pos = .{ .{ .x = 0, .y = 1 }, .{ .x = 0, .y = 2 }, .{ .x = 1, .y = 2 }, .{ .x = 2, .y = 2 } }, .offset = .{ .x = 0, .y = 0 }, .id = ShapesID.J };
-    const L = Piece{ .pos = .{ .{ .x = 2, .y = 1 }, .{ .x = 0, .y = 2 }, .{ .x = 1, .y = 2 }, .{ .x = 2, .y = 2 } }, .offset = .{ .x = 0, .y = 0 }, .id = ShapesID.L };
+    const I = Piece{ .pos = .{ .{ .x = 0, .y = 1 }, .{ .x = 1, .y = 1 }, .{ .x = 2, .y = 1 }, .{ .x = 3, .y = 1 } }, .offset = .{ .x = 0, .y = 0 }, .id = ShapesID.I, .color = Colors.red };
+    const O = Piece{ .pos = .{ .{ .x = 1, .y = 1 }, .{ .x = 2, .y = 1 }, .{ .x = 1, .y = 2 }, .{ .x = 2, .y = 2 } }, .offset = .{ .x = 0, .y = 0 }, .id = ShapesID.O, .color = Colors.green };
+    const T = Piece{ .pos = .{ .{ .x = 1, .y = 0 }, .{ .x = 0, .y = 1 }, .{ .x = 1, .y = 1 }, .{ .x = 2, .y = 1 } }, .offset = .{ .x = 0, .y = 0 }, .id = ShapesID.T, .color = Colors.yellow };
+    const S = Piece{ .pos = .{ .{ .x = 1, .y = 0 }, .{ .x = 2, .y = 0 }, .{ .x = 0, .y = 1 }, .{ .x = 1, .y = 1 } }, .offset = .{ .x = 0, .y = 0 }, .id = ShapesID.S, .color = Colors.blue };
+    const Z = Piece{ .pos = .{ .{ .x = 0, .y = 0 }, .{ .x = 1, .y = 0 }, .{ .x = 1, .y = 1 }, .{ .x = 2, .y = 1 } }, .offset = .{ .x = 0, .y = 0 }, .id = ShapesID.Z, .color = Colors.pink };
+    const J = Piece{ .pos = .{ .{ .x = 0, .y = 1 }, .{ .x = 0, .y = 2 }, .{ .x = 1, .y = 2 }, .{ .x = 2, .y = 2 } }, .offset = .{ .x = 0, .y = 0 }, .id = ShapesID.J, .color = Colors.aquamarine };
+    const L = Piece{ .pos = .{ .{ .x = 2, .y = 1 }, .{ .x = 0, .y = 2 }, .{ .x = 1, .y = 2 }, .{ .x = 2, .y = 2 } }, .offset = .{ .x = 0, .y = 0 }, .id = ShapesID.L, .color = Colors.orange };
 };
 
 const ShapesID = enum(u8) {
@@ -147,6 +158,8 @@ const game = struct {
         var rotate_right: bool = false;
     };
     var check_mat: [rows][cols]i32 = .{.{0} ** cols} ** rows;
+    var frames: u64 = 0;
+    var lines_cleared: i32 = 0;
 };
 
 fn init_game() void {
@@ -160,12 +173,21 @@ fn getRandomPiece() Piece {
     return pieces[choice];
 }
 
-fn floatToUsize(f: f32) usize {
+fn getPieceFromEnum(id: ShapesID) Piece {
+    const pieces = [_]Piece{ Shapes.I, Shapes.O, Shapes.T, Shapes.S, Shapes.Z, Shapes.J, Shapes.L };
+    return pieces[@as(usize, @intFromEnum(id)) - 1];
+}
+
+inline fn floatToUsize(f: f32) usize {
     return @as(usize, @intFromFloat(f));
 }
 
 inline fn i32ToUsize(i: i32) usize {
     return @as(usize, @intCast(i));
+}
+
+inline fn usizeToI32(u: usize) i32 {
+    return @as(i32, @intCast(u));
 }
 
 inline fn i32ToFloat(i: i32) f32 {
@@ -199,9 +221,6 @@ fn rotatePiece(rotation: Rotation) bool {
         mat[i32ToUsize(game.current_piece.pos[i].y)][i32ToUsize(game.current_piece.pos[i].x)] = 1;
     }
 
-    std.debug.print("initial mat:\n", .{});
-    print_mat(mat);
-
     // transpose matrix
     {
         var i: usize = 0;
@@ -213,8 +232,6 @@ fn rotatePiece(rotation: Rotation) bool {
             }
         }
     }
-    std.debug.print("tranposed mat:\n", .{});
-    print_mat(mat);
 
     // reverse rows if rotation clockwise, cols if anti clockwise
     {
@@ -248,6 +265,9 @@ fn rotatePiece(rotation: Rotation) bool {
 
     // checks if temp piece collides
     for (0..4) |i| {
+        if (temp_piece.pos[i].x + game.current_piece.offset.x < 0 or temp_piece.pos[i].x + game.current_piece.offset.x > game.cols - 1) {
+            continue;
+        }
         if (game.check_mat[i32ToUsize(temp_piece.pos[i].y + game.current_piece.offset.y)][i32ToUsize(temp_piece.pos[i].x + game.current_piece.offset.x)] > 0) {
             return false;
         }
@@ -258,6 +278,65 @@ fn rotatePiece(rotation: Rotation) bool {
         game.current_piece.pos[i].y = temp_piece.pos[i].y;
     }
     return true;
+}
+
+fn clearLines() bool {
+    var line: u8 = 0;
+    var i: i32 = game.rows - 1;
+    var j: usize = 0;
+    while (i >= 0) : (i -= 1) {
+        j = 0;
+        while (j < game.cols) : (j += 1) {
+            if (game.check_mat[i32ToUsize(i)][j] < 1) {
+                line = 0;
+                break;
+            } else {
+                line += 1;
+            }
+        }
+        if (line >= 10) {
+            var k: usize = 0;
+            while (k < game.cols) : (k += 1) {
+                game.check_mat[i32ToUsize(i)][k] = 0;
+            }
+
+            var l: usize = i32ToUsize(i);
+            while (l > 0) : (l -= 1) {
+                k = 0;
+                while (k < game.cols) : (k += 1) {
+                    game.check_mat[l][k] = game.check_mat[l - 1][k];
+                }
+            }
+            game.lines_cleared += 1;
+        }
+    }
+
+    return false;
+}
+
+fn checkPlacePiece() bool {
+    const p = game.current_piece;
+    for (0..4) |i| {
+        if (p.pos[i].y + p.offset.y + 1 < game.rows) {
+            if (game.check_mat[i32ToUsize((p.pos[i].y + p.offset.y) + 1)][i32ToUsize(p.pos[i].x + p.offset.x)] > 0) {
+                return true;
+            }
+        }
+
+        if (p.pos[i].y + p.offset.y >= game.rows - 1) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// maybe rename it to lock piece?
+fn placePiece() void {
+    const p = game.current_piece;
+    for (0..4) |i| {
+        game.check_mat[i32ToUsize(p.pos[i].y + p.offset.y)][i32ToUsize(p.pos[i].x + p.offset.x)] = @as(i32, @intFromEnum(p.id));
+    }
+    game.piece_exists = false;
 }
 
 fn checkPieceCollision(dir: i32) void {
@@ -299,14 +378,6 @@ fn print_mat(mat: [][]i32) void {
 }
 
 fn render_frame() void {
-    if (!game.piece_exists) {
-        game.current_piece = getRandomPiece();
-        game.current_piece.offset.x = 3;
-        game.current_piece.offset.y = 0;
-        game.piece_exists = true;
-    }
-
-    //  std.debug.print("_z key pressed rotate left bool: {s}\n", .{if (game.input.rotate_left) "true" else "false"});
     if (game.input.left) {
         std.debug.print("check left\n", .{});
         game.current_piece.offset.x -= 1;
@@ -320,17 +391,35 @@ fn render_frame() void {
     if (game.input.rotate_right) {
         std.debug.print("rotate right\n", .{});
         _ = rotatePiece(Rotation.cw);
+        checkPieceCollision(1);
     }
     if (game.input.rotate_left) {
         std.debug.print("rotate left\n", .{});
         _ = rotatePiece(Rotation.counter_cw);
+        checkPieceCollision(2);
     }
+
+    if (!game.piece_exists) {
+        game.current_piece = getRandomPiece();
+        game.current_piece.offset.x = 3;
+        game.current_piece.offset.y = 0;
+        game.piece_exists = true;
+    }
+
+    if (game.frames % 12 == 0) {
+        if (checkPlacePiece()) {
+            placePiece();
+        } else {
+            game.current_piece.offset.y += 1;
+        }
+    }
+    _ = clearLines();
 
     // renders piece
     const p = game.current_piece;
     for (0..4) |i| {
         const cell = Quad{ .x = i32ToFloat(game.playfield_pos.x + (p.pos[i].x + p.offset.x) * game.cell_size), .y = i32ToFloat(game.playfield_pos.y + (p.pos[i].y + p.offset.y) * game.cell_size), .w = game.cell_size, .h = game.cell_size };
-        render_quad(cell, .{ .r = 255, .g = 0, .b = 0 });
+        render_quad(cell, p.color);
     }
 
     // renders playfield
@@ -338,12 +427,24 @@ fn render_frame() void {
     render_quad(.{ .x = i32ToFloat(game.playfield_pos.x + game.cell_size * game.cols), .y = i32ToFloat(game.playfield_pos.y), .w = game.cell_size, .h = game.cell_size * game.rows }, .{ .r = 255, .g = 255, .b = 255 });
     render_quad(.{ .x = i32ToFloat(game.playfield_pos.x - game.cell_size), .y = i32ToFloat(game.playfield_pos.y + game.rows * game.cell_size), .w = game.cell_size * (game.cols + 2), .h = game.cell_size }, .{ .r = 255, .g = 255, .b = 255 });
 
+    for (0..game.check_mat.len) |i| {
+        for (0..game.check_mat[i].len) |j| {
+            if (game.check_mat[i][j] > 0) {
+                const cell = Quad{ .x = i32ToFloat(game.playfield_pos.x + usizeToI32(j) * game.cell_size), .y = i32ToFloat(game.playfield_pos.y + usizeToI32(i) * game.cell_size), .w = game.cell_size, .h = game.cell_size };
+                // check this ajsdasdj
+                render_quad(cell, getPieceFromEnum(@as(ShapesID, @enumFromInt(game.check_mat[i][j]))).color);
+            }
+        }
+    }
+
     game.input.up = false;
     game.input.down = false;
     game.input.left = false;
     game.input.right = false;
     game.input.rotate_left = false;
     game.input.rotate_right = false;
+
+    game.frames += 1;
 }
 
 export fn init() void {
