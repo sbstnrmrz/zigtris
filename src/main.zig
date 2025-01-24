@@ -96,8 +96,8 @@ fn render_quad(quad: Quad, color: ColorRGB) void {
 }
 
 const Vec2 = struct {
-    x: f32 = 0,
-    y: f32 = 0,
+    x: i32 = 0,
+    y: i32 = 0,
 };
 
 const Piece = struct {
@@ -135,7 +135,7 @@ const game = struct {
     const cell_size: i32 = 16;
     const rows: i32 = 20;
     const cols: i32 = 10;
-    const playfield_pos = Vec2{ .x = @as(f32, @floatFromInt(win_width - cols * cell_size)) / 2.0, .y = @as(f32, @floatFromInt(win_height - rows * cell_size)) / 2.0 };
+    const playfield_pos = Vec2{ .x = (win_width - cols * cell_size) / 2, .y = (win_height - rows * cell_size) / 2 };
     var current_piece: Piece = undefined;
     var piece_exists: bool = false;
     const input = struct {
@@ -164,6 +164,14 @@ fn floatToUsize(f: f32) usize {
     return @as(usize, @intFromFloat(f));
 }
 
+inline fn i32ToUsize(i: i32) usize {
+    return @as(usize, @intCast(i));
+}
+
+inline fn i32ToFloat(i: i32) f32 {
+    return @as(f32, @floatFromInt(i));
+}
+
 fn rotatePiece(rotation: Rotation) bool {
     var rows: usize = 0;
     var cols: usize = 0;
@@ -178,6 +186,7 @@ fn rotatePiece(rotation: Rotation) bool {
     var mat: [][]i32 = state.allocator.alloc([]i32, rows) catch unreachable;
     for (mat) |*i| {
         i.* = state.allocator.alloc(i32, cols) catch unreachable;
+        @memset(i.*, 0);
     }
     defer {
         for (0..mat.len) |i| {
@@ -187,26 +196,35 @@ fn rotatePiece(rotation: Rotation) bool {
     }
 
     for (0..4) |i| {
-        mat[floatToUsize(game.current_piece.pos[i].y)][floatToUsize(game.current_piece.pos[i].x)] = 1;
+        mat[i32ToUsize(game.current_piece.pos[i].y)][i32ToUsize(game.current_piece.pos[i].x)] = 1;
     }
 
-    // reverse rows
+    std.debug.print("initial mat:\n", .{});
+    print_mat(mat);
+
+    // transpose matrix
     {
         var i: usize = 0;
         var j: usize = 0;
         while (i < rows) : (i += 1) {
+            j = 0;
             while (j < i) : (j += 1) {
                 swap(i32, &mat[i][j], &mat[j][i]);
             }
         }
     }
+    std.debug.print("tranposed mat:\n", .{});
+    print_mat(mat);
+
+    // reverse rows if rotation clockwise, cols if anti clockwise
     {
         var i: usize = 0;
         var j: usize = 0;
         while (i < rows - i) : (i += 1) {
+            j = 0;
             while (j < cols) : (j += 1) {
                 if (rotation == Rotation.cw) {
-                    swap(i32, &mat[i][j], &mat[j][(cols - 1) - i]);
+                    swap(i32, &mat[j][i], &mat[j][(cols - 1) - i]);
                 }
                 if (rotation == Rotation.counter_cw) {
                     swap(i32, &mat[i][j], &mat[(rows - 1) - i][j]);
@@ -221,8 +239,8 @@ fn rotatePiece(rotation: Rotation) bool {
     for (0..rows) |i| {
         for (0..cols) |j| {
             if (mat[i][j] == 1) {
-                temp_piece.pos[cnt].x = @as(f32, @floatFromInt(j));
-                temp_piece.pos[cnt].y = @as(f32, @floatFromInt(i));
+                temp_piece.pos[cnt].x = @as(i32, @intCast(j));
+                temp_piece.pos[cnt].y = @as(i32, @intCast(i));
                 cnt += 1;
             }
         }
@@ -230,14 +248,15 @@ fn rotatePiece(rotation: Rotation) bool {
 
     // checks if temp piece collides
     for (0..4) |i| {
-        if (game.check_mat[floatToUsize(temp_piece.pos[i].y + game.current_piece.offset.y)][floatToUsize(temp_piece.pos[i].x + game.current_piece.offset.x)] > 0) {
-            std.debug.print("asd\n", .{});
+        if (game.check_mat[i32ToUsize(temp_piece.pos[i].y + game.current_piece.offset.y)][i32ToUsize(temp_piece.pos[i].x + game.current_piece.offset.x)] > 0) {
             return false;
         }
     }
 
-    game.current_piece = temp_piece;
-    std.debug.print("asd\n", .{});
+    for (0..4) |i| {
+        game.current_piece.pos[i].x = temp_piece.pos[i].x;
+        game.current_piece.pos[i].y = temp_piece.pos[i].y;
+    }
     return true;
 }
 
@@ -256,8 +275,8 @@ fn checkPieceCollision(dir: i32) void {
 
     // checks collision between pieces
     for (0..4) |i| {
-        const x = @as(usize, @intFromFloat(p.pos[i].x + p.offset.x));
-        const y = @as(usize, @intFromFloat(p.pos[i].y + p.offset.y));
+        const x = @as(usize, @intCast(p.pos[i].x + p.offset.x));
+        const y = @as(usize, @intCast(p.pos[i].y + p.offset.y));
         // check this because of the Shapes enum
         if (game.check_mat[y][x] > 0) {
             if (dir == 1) {
@@ -270,12 +289,12 @@ fn checkPieceCollision(dir: i32) void {
     }
 }
 
-fn print_mat() void {
-    for (game.check_mat) |i| {
-        for (i) |j| {
-            print("{d} ", .{j});
+fn print_mat(mat: [][]i32) void {
+    for (0..mat.len) |i| {
+        for (0..mat[i].len) |j| {
+            std.debug.print("{d} ", .{mat[i][j]});
         }
-        print("\n", .{});
+        std.debug.print("\n", .{});
     }
 }
 
@@ -310,14 +329,14 @@ fn render_frame() void {
     // renders piece
     const p = game.current_piece;
     for (0..4) |i| {
-        const cell = Quad{ .x = game.playfield_pos.x + (p.pos[i].x + p.offset.x) * game.cell_size, .y = game.playfield_pos.y + (p.pos[i].y + p.offset.y) * game.cell_size, .w = game.cell_size, .h = game.cell_size };
+        const cell = Quad{ .x = i32ToFloat(game.playfield_pos.x + (p.pos[i].x + p.offset.x) * game.cell_size), .y = i32ToFloat(game.playfield_pos.y + (p.pos[i].y + p.offset.y) * game.cell_size), .w = game.cell_size, .h = game.cell_size };
         render_quad(cell, .{ .r = 255, .g = 0, .b = 0 });
     }
 
     // renders playfield
-    render_quad(.{ .x = game.playfield_pos.x - game.cell_size, .y = game.playfield_pos.y, .w = game.cell_size, .h = game.cell_size * game.rows }, .{ .r = 255, .g = 255, .b = 255 });
-    render_quad(.{ .x = game.playfield_pos.x + game.cell_size * game.cols, .y = game.playfield_pos.y, .w = game.cell_size, .h = game.cell_size * game.rows }, .{ .r = 255, .g = 255, .b = 255 });
-    render_quad(.{ .x = game.playfield_pos.x - game.cell_size, .y = game.playfield_pos.y + game.rows * game.cell_size, .w = game.cell_size * (game.cols + 2), .h = game.cell_size }, .{ .r = 255, .g = 255, .b = 255 });
+    render_quad(.{ .x = i32ToFloat(game.playfield_pos.x - game.cell_size), .y = i32ToFloat(game.playfield_pos.y), .w = game.cell_size, .h = game.cell_size * game.rows }, .{ .r = 255, .g = 255, .b = 255 });
+    render_quad(.{ .x = i32ToFloat(game.playfield_pos.x + game.cell_size * game.cols), .y = i32ToFloat(game.playfield_pos.y), .w = game.cell_size, .h = game.cell_size * game.rows }, .{ .r = 255, .g = 255, .b = 255 });
+    render_quad(.{ .x = i32ToFloat(game.playfield_pos.x - game.cell_size), .y = i32ToFloat(game.playfield_pos.y + game.rows * game.cell_size), .w = game.cell_size * (game.cols + 2), .h = game.cell_size }, .{ .r = 255, .g = 255, .b = 255 });
 
     game.input.up = false;
     game.input.down = false;
