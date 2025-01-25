@@ -1,3 +1,5 @@
+// TODO: implement a better solution to the quad arrays
+
 const std = @import("std");
 const sokol = @import("sokol");
 const slog = sokol.log;
@@ -25,7 +27,11 @@ const state = struct {
     const allocator = gpa.allocator();
     var quad_vertices = ArrayList(f32).init(allocator);
     var quad_indices = ArrayList(u16).init(allocator);
+    var _quad_vertices: [3000]f32 = .{0} ** 3000;
+    var _quad_indices: [512]i16 = .{0} ** 512;
     var quad_count: u32 = 0;
+    var vertex_count: u32 = 0;
+    var index_count: u32 = 0;
     var prng: std.Random.DefaultPrng = undefined;
 };
 
@@ -37,6 +43,11 @@ fn swap(comptime T: type, a: *T, b: *T) void {
 
 fn rgbToFloat(c: u8) f32 {
     return @as(f32, @floatFromInt(c)) / 255.0;
+}
+
+fn pushIndex(index: i16) void {
+    state._quad_indices[@as(usize, @intCast(state.index_count))] = index;
+    state.index_count += 1;
 }
 
 fn randColor() ColorRGB {
@@ -82,15 +93,16 @@ fn render_quad(quad: Quad, color: ColorRGB) void {
     };
 
     for (vertices) |v| {
-        state.quad_vertices.append(v) catch unreachable;
+        state._quad_vertices[state.vertex_count] = v;
+        state.vertex_count += 1;
     }
 
-    state.quad_indices.append((@as(u16, @intCast(state.quad_count)) * 4) + 0) catch unreachable;
-    state.quad_indices.append((@as(u16, @intCast(state.quad_count)) * 4) + 1) catch unreachable;
-    state.quad_indices.append((@as(u16, @intCast(state.quad_count)) * 4) + 2) catch unreachable;
-    state.quad_indices.append((@as(u16, @intCast(state.quad_count)) * 4) + 2) catch unreachable;
-    state.quad_indices.append((@as(u16, @intCast(state.quad_count)) * 4) + 1) catch unreachable;
-    state.quad_indices.append((@as(u16, @intCast(state.quad_count)) * 4) + 3) catch unreachable;
+    pushIndex((@as(i16, @intCast(state.quad_count)) * 4) + 0);
+    pushIndex((@as(i16, @intCast(state.quad_count)) * 4) + 1);
+    pushIndex((@as(i16, @intCast(state.quad_count)) * 4) + 2);
+    pushIndex((@as(i16, @intCast(state.quad_count)) * 4) + 2);
+    pushIndex((@as(i16, @intCast(state.quad_count)) * 4) + 1);
+    pushIndex((@as(i16, @intCast(state.quad_count)) * 4) + 3);
 
     state.quad_count += 1;
 }
@@ -103,7 +115,7 @@ const Vec2 = struct {
 const Piece = struct {
     pos: [4]Vec2,
     offset: Vec2,
-    id: ShapesID,
+    id: ShapeID,
     color: ColorRGB,
 };
 
@@ -118,16 +130,16 @@ const Colors = enum {
 };
 
 const Shapes = enum {
-    const I = Piece{ .pos = .{ .{ .x = 0, .y = 1 }, .{ .x = 1, .y = 1 }, .{ .x = 2, .y = 1 }, .{ .x = 3, .y = 1 } }, .offset = .{ .x = 0, .y = 0 }, .id = ShapesID.I, .color = Colors.red };
-    const O = Piece{ .pos = .{ .{ .x = 1, .y = 1 }, .{ .x = 2, .y = 1 }, .{ .x = 1, .y = 2 }, .{ .x = 2, .y = 2 } }, .offset = .{ .x = 0, .y = 0 }, .id = ShapesID.O, .color = Colors.green };
-    const T = Piece{ .pos = .{ .{ .x = 1, .y = 0 }, .{ .x = 0, .y = 1 }, .{ .x = 1, .y = 1 }, .{ .x = 2, .y = 1 } }, .offset = .{ .x = 0, .y = 0 }, .id = ShapesID.T, .color = Colors.yellow };
-    const S = Piece{ .pos = .{ .{ .x = 1, .y = 0 }, .{ .x = 2, .y = 0 }, .{ .x = 0, .y = 1 }, .{ .x = 1, .y = 1 } }, .offset = .{ .x = 0, .y = 0 }, .id = ShapesID.S, .color = Colors.blue };
-    const Z = Piece{ .pos = .{ .{ .x = 0, .y = 0 }, .{ .x = 1, .y = 0 }, .{ .x = 1, .y = 1 }, .{ .x = 2, .y = 1 } }, .offset = .{ .x = 0, .y = 0 }, .id = ShapesID.Z, .color = Colors.pink };
-    const J = Piece{ .pos = .{ .{ .x = 0, .y = 1 }, .{ .x = 0, .y = 2 }, .{ .x = 1, .y = 2 }, .{ .x = 2, .y = 2 } }, .offset = .{ .x = 0, .y = 0 }, .id = ShapesID.J, .color = Colors.aquamarine };
-    const L = Piece{ .pos = .{ .{ .x = 2, .y = 1 }, .{ .x = 0, .y = 2 }, .{ .x = 1, .y = 2 }, .{ .x = 2, .y = 2 } }, .offset = .{ .x = 0, .y = 0 }, .id = ShapesID.L, .color = Colors.orange };
+    const I = Piece{ .pos = .{ .{ .x = 0, .y = 1 }, .{ .x = 1, .y = 1 }, .{ .x = 2, .y = 1 }, .{ .x = 3, .y = 1 } }, .offset = .{ .x = 0, .y = 0 }, .id = ShapeID.I, .color = Colors.red };
+    const O = Piece{ .pos = .{ .{ .x = 1, .y = 1 }, .{ .x = 2, .y = 1 }, .{ .x = 1, .y = 2 }, .{ .x = 2, .y = 2 } }, .offset = .{ .x = 0, .y = 0 }, .id = ShapeID.O, .color = Colors.green };
+    const T = Piece{ .pos = .{ .{ .x = 1, .y = 0 }, .{ .x = 0, .y = 1 }, .{ .x = 1, .y = 1 }, .{ .x = 2, .y = 1 } }, .offset = .{ .x = 0, .y = 0 }, .id = ShapeID.T, .color = Colors.yellow };
+    const S = Piece{ .pos = .{ .{ .x = 1, .y = 0 }, .{ .x = 2, .y = 0 }, .{ .x = 0, .y = 1 }, .{ .x = 1, .y = 1 } }, .offset = .{ .x = 0, .y = 0 }, .id = ShapeID.S, .color = Colors.blue };
+    const Z = Piece{ .pos = .{ .{ .x = 0, .y = 0 }, .{ .x = 1, .y = 0 }, .{ .x = 1, .y = 1 }, .{ .x = 2, .y = 1 } }, .offset = .{ .x = 0, .y = 0 }, .id = ShapeID.Z, .color = Colors.pink };
+    const J = Piece{ .pos = .{ .{ .x = 0, .y = 1 }, .{ .x = 0, .y = 2 }, .{ .x = 1, .y = 2 }, .{ .x = 2, .y = 2 } }, .offset = .{ .x = 0, .y = 0 }, .id = ShapeID.J, .color = Colors.aquamarine };
+    const L = Piece{ .pos = .{ .{ .x = 2, .y = 1 }, .{ .x = 0, .y = 2 }, .{ .x = 1, .y = 2 }, .{ .x = 2, .y = 2 } }, .offset = .{ .x = 0, .y = 0 }, .id = ShapeID.L, .color = Colors.orange };
 };
 
-const ShapesID = enum(u8) {
+const ShapeID = enum(u8) {
     I = 1,
     O = 2,
     T = 3,
@@ -154,8 +166,8 @@ const game = struct {
         var down: bool = false;
         var left: bool = false;
         var right: bool = false;
-        var rotate_left: bool = false;
-        var rotate_right: bool = false;
+        var rotate_cw: bool = false;
+        var rotate_counter_cw: bool = false;
     };
     var check_mat: [rows][cols]i32 = .{.{0} ** cols} ** rows;
     var frames: u64 = 0;
@@ -173,7 +185,7 @@ fn getRandomPiece() Piece {
     return pieces[choice];
 }
 
-fn getPieceFromEnum(id: ShapesID) Piece {
+fn getPieceFromEnum(id: ShapeID) Piece {
     const pieces = [_]Piece{ Shapes.I, Shapes.O, Shapes.T, Shapes.S, Shapes.Z, Shapes.J, Shapes.L };
     return pieces[@as(usize, @intFromEnum(id)) - 1];
 }
@@ -195,27 +207,11 @@ inline fn i32ToFloat(i: i32) f32 {
 }
 
 fn rotatePiece(rotation: Rotation) bool {
-    var rows: usize = 0;
-    var cols: usize = 0;
-    if (@as(u8, @intFromEnum(game.current_piece.id)) > @as(u8, @intFromEnum(ShapesID.O))) {
-        rows = 3;
-        cols = 3;
-    } else {
-        rows = 4;
-        cols = 4;
-    }
+    const rows: usize = if (@as(u8, @intFromEnum(game.current_piece.id)) > @as(u8, @intFromEnum(ShapeID.O))) 3 else 4;
+    const cols: usize = rows;
 
-    var mat: [][]i32 = state.allocator.alloc([]i32, rows) catch unreachable;
-    for (mat) |*i| {
-        i.* = state.allocator.alloc(i32, cols) catch unreachable;
-        @memset(i.*, 0);
-    }
-    defer {
-        for (0..mat.len) |i| {
-            state.allocator.free(mat[i]);
-        }
-        state.allocator.free(mat);
-    }
+    var mat: [4][4]i32 = .{.{0} ** 4} ** 4;
+    //  @memset(&mat, 0);
 
     for (0..4) |i| {
         mat[i32ToUsize(game.current_piece.pos[i].y)][i32ToUsize(game.current_piece.pos[i].x)] = 1;
@@ -368,13 +364,24 @@ fn checkPieceCollision(dir: i32) void {
     }
 }
 
-fn print_mat(mat: [][]i32) void {
+fn printMat(mat: [][]i32) void {
     for (0..mat.len) |i| {
         for (0..mat[i].len) |j| {
             std.debug.print("{d} ", .{mat[i][j]});
         }
         std.debug.print("\n", .{});
     }
+}
+
+fn printQuadInfo() void {
+    std.log.debug("quad count: {d}", .{state.quad_count});
+    std.log.debug("vertex count: {d}", .{state.vertex_count});
+    std.log.debug("index count: {d}", .{state.index_count});
+    std.log.debug("vertex buffer size: {d}", .{state.vertex_count * @sizeOf(f32)});
+    std.log.debug("index buffer size: {d}\n\n", .{state.index_count * @sizeOf(f32)});
+
+    //  print("quads: {d}\nvertices: {d}\nindices: {d}\n\n", .{ state.quad_count, state.quad_vertices.items.len, state.quad_indices.items.len });
+
 }
 
 fn render_frame() void {
@@ -388,12 +395,12 @@ fn render_frame() void {
         checkPieceCollision(2);
     }
 
-    if (game.input.rotate_right) {
+    if (game.input.rotate_cw) {
         std.debug.print("rotate right\n", .{});
         _ = rotatePiece(Rotation.cw);
         checkPieceCollision(1);
     }
-    if (game.input.rotate_left) {
+    if (game.input.rotate_counter_cw) {
         std.debug.print("rotate left\n", .{});
         _ = rotatePiece(Rotation.counter_cw);
         checkPieceCollision(2);
@@ -432,7 +439,7 @@ fn render_frame() void {
             if (game.check_mat[i][j] > 0) {
                 const cell = Quad{ .x = i32ToFloat(game.playfield_pos.x + usizeToI32(j) * game.cell_size), .y = i32ToFloat(game.playfield_pos.y + usizeToI32(i) * game.cell_size), .w = game.cell_size, .h = game.cell_size };
                 // check this ajsdasdj
-                render_quad(cell, getPieceFromEnum(@as(ShapesID, @enumFromInt(game.check_mat[i][j]))).color);
+                render_quad(cell, getPieceFromEnum(@as(ShapeID, @enumFromInt(game.check_mat[i][j]))).color);
             }
         }
     }
@@ -441,8 +448,8 @@ fn render_frame() void {
     game.input.down = false;
     game.input.left = false;
     game.input.right = false;
-    game.input.rotate_left = false;
-    game.input.rotate_right = false;
+    game.input.rotate_counter_cw = false;
+    game.input.rotate_cw = false;
 
     game.frames += 1;
 }
@@ -455,10 +462,14 @@ export fn init() void {
     });
 
     // a vertex buffer
-    state.bind.vertex_buffers[0] = sg.makeBuffer(.{ .size = 500000, .usage = .DYNAMIC, .type = .VERTEXBUFFER });
+    state.bind.vertex_buffers[0] = sg.makeBuffer(.{
+        .size = 10000,
+        .usage = .DYNAMIC,
+        .type = .VERTEXBUFFER,
+    });
 
     state.bind.index_buffer = sg.makeBuffer(.{
-        .size = 8192,
+        .size = 2048,
         .type = .INDEXBUFFER,
         .usage = .DYNAMIC,
     });
@@ -490,21 +501,21 @@ export fn init() void {
 }
 
 export fn frame() void {
-    if (state.quad_vertices.items.len > 0) {
-        state.quad_vertices.clearRetainingCapacity();
-        state.quad_indices.clearRetainingCapacity();
-        state.quad_count = 0;
-        state.bind.vertex_buffer_offsets[0] = 0;
-        state.bind.index_buffer_offset = 0;
-    }
+    state.quad_count = 0;
+    state.vertex_count = 0;
+    state.index_count = 0;
+    state.bind.vertex_buffer_offsets[0] = 0;
+    state.bind.index_buffer_offset = 0;
 
     sg.beginPass(.{ .action = state.pass_action, .swapchain = sglue.swapchain() });
 
     render_frame();
 
-    if (state.quad_vertices.items.len > 0) {
-        sg.updateBuffer(state.bind.vertex_buffers[0], sg.asRange(state.quad_vertices.items));
-        sg.updateBuffer(state.bind.index_buffer, sg.asRange(state.quad_indices.items));
+    const vertices = state._quad_vertices[0..state.vertex_count];
+    const indices = state._quad_indices[0..state.index_count];
+    if (state.quad_count > 0) {
+        sg.updateBuffer(state.bind.vertex_buffers[0], sg.asRange(vertices));
+        sg.updateBuffer(state.bind.index_buffer, sg.asRange(indices));
     }
 
     //  print("quads: {d}\nvertices: {d}\nindices: {d}\n\n", .{ state.quad_count, state.quad_vertices.items.len, state.quad_indices.items.len });
@@ -515,6 +526,8 @@ export fn frame() void {
     sg.draw(0, state.quad_count * 6, 1);
     sg.endPass();
     sg.commit();
+
+    printQuadInfo();
 }
 
 export fn input_cb(e: ?*const sapp.Event) void {
@@ -539,12 +552,12 @@ export fn input_cb(e: ?*const sapp.Event) void {
                 print("right", .{});
             },
             .Z => {
-                game.input.rotate_left = true;
-                std.debug.print("z key pressed rotate left bool: {s}\n", .{if (game.input.rotate_left) "true" else "false"});
+                game.input.rotate_counter_cw = true;
+                std.debug.print("z key pressed rotate left bool: {s}\n", .{if (game.input.rotate_counter_cw) "true" else "false"});
             },
             .X => {
-                game.input.rotate_right = true;
-                std.debug.print("x key pressed rotate right bool: {s}\n", .{if (game.input.rotate_right) "true" else "false"});
+                game.input.rotate_cw = true;
+                std.debug.print("x key pressed rotate right bool: {s}\n", .{if (game.input.rotate_cw) "true" else "false"});
             },
             else => {},
         }
