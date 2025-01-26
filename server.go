@@ -1,20 +1,43 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
-	"log"
+	"path/filepath"
 )
 
 func main() {
-	// Handle the root route ("/") and serve the HTML file
+	// Ruta a la carpeta que contiene los archivos
+	webDir := "./zig-out/web"
+
+	// Servir archivos estáticos con los tipos MIME correctos
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, "zig-out/web/zigtris.html")
+		// Obtener la ruta del archivo solicitado
+		filePath := filepath.Join(webDir, r.URL.Path)
+
+		// Configurar CORS
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+
+		// Determinar el tipo MIME basado en la extensión del archivo
+		switch filepath.Ext(filePath) {
+		case ".js":
+			w.Header().Set("Content-Type", "application/javascript")
+		case ".wasm":
+			w.Header().Set("Content-Type", "application/wasm")
+		case ".html":
+			w.Header().Set("Content-Type", "text/html")
+		default:
+			// Para otros archivos, usar el tipo MIME predeterminado
+			w.Header().Set("Content-Type", http.DetectContentType([]byte{}))
+		}
+
+		// Servir el archivo
+		http.ServeFile(w, r, filePath)
 	})
 
-	// Start the server on port 8080
-	log.Println("Starting server on http://localhost:8080...")
-	err := http.ListenAndServe(":8080", nil)
-	if err != nil {
-		log.Fatalf("Failed to start server: %v", err)
+	// Iniciar el servidor
+	fmt.Println("Servidor iniciado en http://localhost:8080")
+	if err := http.ListenAndServe(":8080", nil); err != nil {
+		fmt.Printf("Error al iniciar el servidor: %s\n", err)
 	}
 }

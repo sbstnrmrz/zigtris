@@ -11,8 +11,29 @@ const m = @import("math.zig");
 const shader_quad = @import("shaders/quad.glsl.zig");
 const Vec4 = m.Vec4;
 const ArrayList = std.ArrayList;
-
 const print = std.debug.print;
+
+inline fn floatToUsize(f: f32) usize {
+    return @as(usize, @intFromFloat(f));
+}
+
+inline fn i32ToUsize(i: i32) usize {
+    return @as(usize, @intCast(i));
+}
+
+inline fn usizeToI32(u: usize) i32 {
+    return @as(i32, @intCast(u));
+}
+
+inline fn i32ToFloat(i: i32) f32 {
+    return @as(f32, @floatFromInt(i));
+}
+
+fn swap(comptime T: type, a: *T, b: *T) void {
+    const temp = a.*;
+    a.* = b.*;
+    b.* = temp;
+}
 
 const win_width = 800;
 const win_height = 600;
@@ -25,29 +46,31 @@ const state = struct {
     const vs_params: shader_quad.VsParams = .{ .p = ortho_proj_mat };
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
+    var vertices: [1500]Vertex = .{0} ** 1500;
+    var vertex_count: u32 = 0;
     var quad_vertices = ArrayList(f32).init(allocator);
     var quad_indices = ArrayList(u16).init(allocator);
     var _quad_vertices: [3000]f32 = .{0} ** 3000;
-    var _quad_indices: [512]i16 = .{0} ** 512;
+    var _quad_indices: [2048]i16 = .{0} ** 2048;
     var quad_count: u32 = 0;
-    var vertex_count: u32 = 0;
+
     var index_count: u32 = 0;
     var prng: std.Random.DefaultPrng = undefined;
 };
 
-fn swap(comptime T: type, a: *T, b: *T) void {
-    const temp = a.*;
-    a.* = b.*;
-    b.* = temp;
-}
+const ColorRGB = struct {
+    r: u8,
+    g: u8,
+    b: u8,
+};
+
+const Vertex = struct {
+    x: f32,
+    y: f32,
+};
 
 fn rgbToFloat(c: u8) f32 {
     return @as(f32, @floatFromInt(c)) / 255.0;
-}
-
-fn pushIndex(index: i16) void {
-    state._quad_indices[@as(usize, @intCast(state.index_count))] = index;
-    state.index_count += 1;
 }
 
 fn randColor() ColorRGB {
@@ -61,21 +84,22 @@ fn randColor() ColorRGB {
     return res;
 }
 
-const ColorRGB = struct {
-    r: u8,
-    g: u8,
-    b: u8,
+fn pushIndex(index: i16) void {
+    state._quad_indices[@as(usize, @intCast(state.index_count))] = index;
+    state.index_count += 1;
+}
 
-    fn redToFloat(self: *ColorRGB) f32 {
-        return @as(f32, @floatFromInt(self.r)) / 255.0;
-    }
-    fn greenToFloat(self: *ColorRGB) f32 {
-        return @as(f32, @floatFromInt(self.g)) / 255.0;
-    }
-    fn blueToFloat(self: *ColorRGB) f32 {
-        return @as(f32, @floatFromInt(self.b)) / 255.0;
-    }
-};
+fn pushVertex(vertex: Vertex) void {
+    state.vertices[state.vertex_count] = vertex;
+    state.vertex_count += 1;
+}
+
+fn pushQuad(quad: Quad) void {
+    pushVertex(Vertex{ .x = quad.x, .y = quad.y });
+    pushVertex(Vertex{ .x = quad.x + quad.w, .y = quad.y });
+    pushVertex(Vertex{ .x = quad.x, .y = quad.y + quad.h });
+    pushVertex(Vertex{ .x = quad.x + quad.w, .y = quad.y + quad.h });
+}
 
 const Quad = struct {
     x: f32,
@@ -140,6 +164,7 @@ const Shapes = enum {
 };
 
 const ShapeID = enum(u8) {
+    NONE = 0,
     I = 1,
     O = 2,
     T = 3,
@@ -154,11 +179,16 @@ const Rotation = enum(u8) {
     counter_cw = 1,
 };
 
+const Queue = struct {};
+
 const game = struct {
     const cell_size: i32 = 16;
     const rows: i32 = 20;
     const cols: i32 = 10;
     const playfield_pos = Vec2{ .x = (win_width - cols * cell_size) / 2, .y = (win_height - rows * cell_size) / 2 };
+    const piece_bag_preview = Vec2{ .x = playfield_pos.x + cols * cell_size, .y = playfield_pos.y };
+    var piece_bag: [14]Piece = undefined;
+    var bag_piece_count: u8 = 0;
     var current_piece: Piece = undefined;
     var piece_exists: bool = false;
     const input = struct {
@@ -174,8 +204,9 @@ const game = struct {
     var lines_cleared: i32 = 0;
 };
 
-fn init_game() void {
+fn gameInit() void {
     game.piece_exists = false;
+    refillBag();
 }
 
 fn getRandomPiece() Piece {
@@ -188,22 +219,6 @@ fn getRandomPiece() Piece {
 fn getPieceFromEnum(id: ShapeID) Piece {
     const pieces = [_]Piece{ Shapes.I, Shapes.O, Shapes.T, Shapes.S, Shapes.Z, Shapes.J, Shapes.L };
     return pieces[@as(usize, @intFromEnum(id)) - 1];
-}
-
-inline fn floatToUsize(f: f32) usize {
-    return @as(usize, @intFromFloat(f));
-}
-
-inline fn i32ToUsize(i: i32) usize {
-    return @as(usize, @intCast(i));
-}
-
-inline fn usizeToI32(u: usize) i32 {
-    return @as(i32, @intCast(u));
-}
-
-inline fn i32ToFloat(i: i32) f32 {
-    return @as(f32, @floatFromInt(i));
 }
 
 fn rotatePiece(rotation: Rotation) bool {
@@ -276,8 +291,10 @@ fn rotatePiece(rotation: Rotation) bool {
     return true;
 }
 
-fn clearLines() bool {
+// this should be called only when a piece is placed
+fn clearLines() u8 {
     var line: u8 = 0;
+    var lines_cleared: u8 = 0;
     var i: i32 = game.rows - 1;
     var j: usize = 0;
     while (i >= 0) : (i -= 1) {
@@ -303,11 +320,11 @@ fn clearLines() bool {
                     game.check_mat[l][k] = game.check_mat[l - 1][k];
                 }
             }
-            game.lines_cleared += 1;
+            lines_cleared += 1;
         }
     }
 
-    return false;
+    return lines_cleared;
 }
 
 fn checkPlacePiece() bool {
@@ -364,6 +381,35 @@ fn checkPieceCollision(dir: i32) void {
     }
 }
 
+fn refillBag() void {
+    while (game.bag_piece_count < game.piece_bag.len) {
+        var repeat = false;
+        const randomPiece = getRandomPiece();
+        // checks if piece already exist in the bag
+        // maybe convert this to a function
+        for (game.piece_bag[if (game.bag_piece_count < 7) 0 else 7..game.bag_piece_count]) |piece| {
+            if (randomPiece.id == piece.id) {
+                repeat = true;
+                break;
+            }
+        }
+        if (repeat) continue;
+        game.piece_bag[game.bag_piece_count] = randomPiece;
+        game.bag_piece_count += 1;
+    }
+}
+
+fn getNextBagPiece() Piece {
+    const res = game.piece_bag[0];
+    for (0..game.bag_piece_count - 1) |i| {
+        game.piece_bag[i] = game.piece_bag[i + 1];
+    }
+    game.piece_bag[game.bag_piece_count - 1].id = .NONE;
+    game.bag_piece_count -= 1;
+
+    return res;
+}
+
 fn printMat(mat: [][]i32) void {
     for (0..mat.len) |i| {
         for (0..mat[i].len) |j| {
@@ -382,6 +428,14 @@ fn printQuadInfo() void {
 
     //  print("quads: {d}\nvertices: {d}\nindices: {d}\n\n", .{ state.quad_count, state.quad_vertices.items.len, state.quad_indices.items.len });
 
+}
+
+fn printBagInfo() void {
+    std.log.debug("bag", .{});
+    for (0..game.piece_bag.len) |i| {
+        std.log.debug("{d}: {d}", .{ i, @as(i32, @intFromEnum(game.piece_bag[i].id)) });
+    }
+    std.debug.print("\n", .{});
 }
 
 fn render_frame() void {
@@ -407,7 +461,10 @@ fn render_frame() void {
     }
 
     if (!game.piece_exists) {
-        game.current_piece = getRandomPiece();
+        if (game.bag_piece_count <= 7) {
+            refillBag();
+        }
+        game.current_piece = getNextBagPiece();
         game.current_piece.offset.x = 3;
         game.current_piece.offset.y = 0;
         game.piece_exists = true;
@@ -420,7 +477,7 @@ fn render_frame() void {
             game.current_piece.offset.y += 1;
         }
     }
-    _ = clearLines();
+    game.lines_cleared += clearLines();
 
     // renders piece
     const p = game.current_piece;
@@ -434,6 +491,7 @@ fn render_frame() void {
     render_quad(.{ .x = i32ToFloat(game.playfield_pos.x + game.cell_size * game.cols), .y = i32ToFloat(game.playfield_pos.y), .w = game.cell_size, .h = game.cell_size * game.rows }, .{ .r = 255, .g = 255, .b = 255 });
     render_quad(.{ .x = i32ToFloat(game.playfield_pos.x - game.cell_size), .y = i32ToFloat(game.playfield_pos.y + game.rows * game.cell_size), .w = game.cell_size * (game.cols + 2), .h = game.cell_size }, .{ .r = 255, .g = 255, .b = 255 });
 
+    // renders pieces in the matrix
     for (0..game.check_mat.len) |i| {
         for (0..game.check_mat[i].len) |j| {
             if (game.check_mat[i][j] > 0) {
@@ -441,6 +499,18 @@ fn render_frame() void {
                 // check this ajsdasdj
                 render_quad(cell, getPieceFromEnum(@as(ShapeID, @enumFromInt(game.check_mat[i][j]))).color);
             }
+        }
+    }
+
+    for (0..4) |i| {
+        for (0..4) |j| {
+            const cell = Quad{
+                .x = i32ToFloat(game.piece_bag[i].pos[j].x * game.cell_size + game.piece_bag_preview.x + (game.cell_size * 2)),
+                .y = i32ToFloat(game.piece_bag[i].pos[j].y * game.cell_size + game.piece_bag_preview.y + (usizeToI32(i) * 5 * game.cell_size)),
+                .w = game.cell_size,
+                .h = game.cell_size,
+            };
+            render_quad(cell, game.piece_bag[i].color);
         }
     }
 
@@ -497,7 +567,7 @@ export fn init() void {
         break :blk seed;
     });
 
-    init_game();
+    gameInit();
 }
 
 export fn frame() void {
@@ -518,8 +588,6 @@ export fn frame() void {
         sg.updateBuffer(state.bind.index_buffer, sg.asRange(indices));
     }
 
-    //  print("quads: {d}\nvertices: {d}\nindices: {d}\n\n", .{ state.quad_count, state.quad_vertices.items.len, state.quad_indices.items.len });
-
     sg.applyPipeline(state.pip);
     sg.applyBindings(state.bind);
     sg.applyUniforms(shader_quad.UB_vs_params, sg.asRange(&state.vs_params));
@@ -528,6 +596,7 @@ export fn frame() void {
     sg.commit();
 
     printQuadInfo();
+    printBagInfo();
 }
 
 export fn input_cb(e: ?*const sapp.Event) void {
