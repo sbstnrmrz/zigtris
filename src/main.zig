@@ -50,7 +50,7 @@ const state = struct {
     var vertex_count: u32 = 0;
     var quad_vertices = ArrayList(f32).init(allocator);
     var quad_indices = ArrayList(u16).init(allocator);
-    var _quad_vertices: [3000]f32 = .{0} ** 3000;
+    var _quad_vertices: [10000]f32 = .{0} ** 10000;
     var _quad_indices: [2048]i16 = .{0} ** 2048;
     var quad_count: u32 = 0;
 
@@ -405,12 +405,36 @@ fn checkPieceCollision(dir: i32) void {
     }
 }
 
+fn getGhostPieceOffset() i32 {
+    const p = game.current_piece;
+    var offset = p.offset.y;
+    var check: i8 = 0;
+    while (true) {
+        for (0..4) |i| {
+            if (p.pos[i].y + offset < game.rows - 1 and game.check_mat[i32ToUsize(p.pos[i].y + offset + 1)][i32ToUsize(p.pos[i].x + p.offset.x)] < 1) {
+                check += 1;
+            } else {
+                check = 0;
+            }
+        }
+        if (check == 4) {
+            check = 0;
+            offset += 1;
+        } else {
+            break;
+        }
+    }
+
+    return offset;
+}
+
 fn refillBag() void {
     while (game.bag_piece_count < game.piece_bag.len) {
         var repeat = false;
         const randomPiece = getRandomPiece();
         // checks if piece already exist in the bag
         // maybe convert this to a function
+        // check if doesnt matter if piece count < or <=
         for (game.piece_bag[if (game.bag_piece_count < 7) 0 else 7..game.bag_piece_count]) |piece| {
             if (randomPiece.id == piece.id) {
                 repeat = true;
@@ -506,10 +530,14 @@ fn render_frame() void {
     }
     game.lines_cleared += clearLines();
 
-    // renders piece
     const p = game.current_piece;
     for (0..4) |i| {
+        //renders ghost piece
+        const ghost_cell = Quad{ .x = i32ToFloat(game.playfield_pos.x + (p.pos[i].x + p.offset.x) * game.cell_size), .y = i32ToFloat(game.playfield_pos.y + (p.pos[i].y + getGhostPieceOffset()) * game.cell_size), .w = game.cell_size, .h = game.cell_size };
+        render_quad(ghost_cell, ColorRGB{ .r = p.color.r / 2, .g = p.color.g / 2, .b = p.color.b / 2 });
+        // renders piece
         const cell = Quad{ .x = i32ToFloat(game.playfield_pos.x + (p.pos[i].x + p.offset.x) * game.cell_size), .y = i32ToFloat(game.playfield_pos.y + (p.pos[i].y + p.offset.y) * game.cell_size), .w = game.cell_size, .h = game.cell_size };
+
         render_quad(cell, p.color);
     }
 
@@ -561,7 +589,7 @@ export fn init() void {
 
     // a vertex buffer
     state.bind.vertex_buffers[0] = sg.makeBuffer(.{
-        .size = 10000,
+        .size = 20000,
         .usage = .DYNAMIC,
         .type = .VERTEXBUFFER,
     });
