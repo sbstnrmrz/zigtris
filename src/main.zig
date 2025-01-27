@@ -198,6 +198,7 @@ const game = struct {
         var right: bool = false;
         var rotate_cw: bool = false;
         var rotate_counter_cw: bool = false;
+        var space: bool = false;
     };
     var check_mat: [rows][cols]i32 = .{.{0} ** cols} ** rows;
     var frames: u64 = 0;
@@ -352,6 +353,29 @@ fn placePiece() void {
     game.piece_exists = false;
 }
 
+fn hardDrop() void {
+    const p = game.current_piece;
+    var offset = p.offset.y;
+    var check: i8 = 0;
+    while (true) {
+        for (0..4) |i| {
+            if (p.pos[i].y + offset < game.rows - 1 and game.check_mat[i32ToUsize(p.pos[i].y + offset + 1)][i32ToUsize(p.pos[i].x + p.offset.x)] < 1) {
+                check += 1;
+            } else {
+                check = 0;
+            }
+        }
+        if (check == 4) {
+            check = 0;
+            offset += 1;
+        } else {
+            break;
+        }
+    }
+    game.current_piece.offset.y = offset;
+    placePiece();
+}
+
 fn checkPieceCollision(dir: i32) void {
     var p = &game.current_piece;
 
@@ -459,6 +483,9 @@ fn render_frame() void {
         _ = rotatePiece(Rotation.counter_cw);
         checkPieceCollision(2);
     }
+    if (game.input.space) {
+        hardDrop();
+    }
 
     if (!game.piece_exists) {
         if (game.bag_piece_count <= 7) {
@@ -520,6 +547,7 @@ fn render_frame() void {
     game.input.right = false;
     game.input.rotate_counter_cw = false;
     game.input.rotate_cw = false;
+    game.input.space = false;
 
     game.frames += 1;
 }
@@ -627,6 +655,9 @@ export fn input_cb(e: ?*const sapp.Event) void {
             .X => {
                 game.input.rotate_cw = true;
                 std.debug.print("x key pressed rotate right bool: {s}\n", .{if (game.input.rotate_cw) "true" else "false"});
+            },
+            .SPACE => {
+                game.input.space = true;
             },
             else => {},
         }
