@@ -48,8 +48,6 @@ const state = struct {
     const allocator = gpa.allocator();
     var vertices: [1500]Vertex = .{0} ** 1500;
     var vertex_count: u32 = 0;
-    var quad_vertices = ArrayList(f32).init(allocator);
-    var quad_indices = ArrayList(u16).init(allocator);
     var _quad_vertices: [10000]f32 = .{0} ** 10000;
     var _quad_indices: [2048]i16 = .{0} ** 2048;
     var quad_count: u32 = 0;
@@ -59,9 +57,9 @@ const state = struct {
 };
 
 const ColorRGB = struct {
-    r: u8,
-    g: u8,
-    b: u8,
+    r: u8 = 0,
+    g: u8 = 0,
+    b: u8 = 0,
 };
 
 const Vertex = struct {
@@ -191,6 +189,10 @@ const game = struct {
     var bag_piece_count: u8 = 0;
     var current_piece: Piece = undefined;
     var piece_exists: bool = false;
+    var hold_piece: Piece = .{ .pos = .{ .{}, .{}, .{}, .{} }, .offset = .{}, .id = .NONE, .color = .{} };
+    var piece_is_hold: bool = false;
+    var can_hold: bool = false;
+
     const input = struct {
         var up: bool = false;
         var down: bool = false;
@@ -198,6 +200,7 @@ const game = struct {
         var right: bool = false;
         var rotate_cw: bool = false;
         var rotate_counter_cw: bool = false;
+        var c: bool = false;
         var space: bool = false;
     };
     var check_mat: [rows][cols]i32 = .{.{0} ** cols} ** rows;
@@ -207,6 +210,7 @@ const game = struct {
 
 fn gameInit() void {
     game.piece_exists = false;
+    game.can_hold = true;
     refillBag();
 }
 
@@ -351,6 +355,7 @@ fn placePiece() void {
         game.check_mat[i32ToUsize(p.pos[i].y + p.offset.y)][i32ToUsize(p.pos[i].x + p.offset.x)] = @as(i32, @intFromEnum(p.id));
     }
     game.piece_exists = false;
+    game.can_hold = true;
 }
 
 fn hardDrop() void {
@@ -428,21 +433,46 @@ fn getGhostPieceOffset() i32 {
     return offset;
 }
 
+fn holdPiece() bool {
+    if (game.can_hold) {
+        if (game.piece_is_hold) {
+            std.debug.print("hold\n", .{});
+            swap(Piece, &game.current_piece, &game.hold_piece);
+            // ugly hack to reset the resets the piece pos, maybe make a function of this
+            game.hold_piece = getPieceFromEnum(game.hold_piece.id);
+            game.current_piece = getPieceFromEnum(game.current_piece.id);
+            game.current_piece.offset.x = 3;
+            game.current_piece.offset.y = 0;
+            game.piece_is_hold = true;
+        } else {
+            std.debug.print("hold2\n", .{});
+            game.hold_piece = game.current_piece;
+            game.current_piece = getNextBagPiece();
+            game.current_piece.offset.x = 3;
+            game.current_piece.offset.y = 0;
+            game.piece_is_hold = true;
+        }
+        game.can_hold = false;
+    }
+
+    return false;
+}
+
 fn refillBag() void {
     while (game.bag_piece_count < game.piece_bag.len) {
         var repeat = false;
-        const randomPiece = getRandomPiece();
+        const random_piece = getRandomPiece();
         // checks if piece already exist in the bag
         // maybe convert this to a function
         // check if doesnt matter if piece count < or <=
         for (game.piece_bag[if (game.bag_piece_count < 7) 0 else 7..game.bag_piece_count]) |piece| {
-            if (randomPiece.id == piece.id) {
+            if (random_piece.id == piece.id) {
                 repeat = true;
                 break;
             }
         }
         if (repeat) continue;
-        game.piece_bag[game.bag_piece_count] = randomPiece;
+        game.piece_bag[game.bag_piece_count] = random_piece;
         game.bag_piece_count += 1;
     }
 }
@@ -486,6 +516,7 @@ fn printBagInfo() void {
     std.debug.print("\n", .{});
 }
 
+// maybe rename to tick or something
 fn render_frame() void {
     if (game.input.left) {
         std.debug.print("check left\n", .{});
@@ -510,6 +541,9 @@ fn render_frame() void {
     if (game.input.space) {
         hardDrop();
     }
+    if (game.input.c) {
+        _ = holdPiece();
+    }
 
     if (!game.piece_exists) {
         if (game.bag_piece_count <= 7) {
@@ -530,6 +564,15 @@ fn render_frame() void {
     }
     game.lines_cleared += clearLines();
 
+    // renders playfield
+    render_quad(.{ .x = i32ToFloat(game.playfield_pos.x - game.cell_size), .y = i32ToFloat(game.playfield_pos.y), .w = game.cell_size, .h = game.cell_size * game.rows }, .{ .r = 255, .g = 255, .b = 255 });
+    render_quad(.{ .x = i32ToFloat(game.playfield_pos.x + game.cell_size * game.cols), .y = i32ToFloat(game.playfield_pos.y), .w = game.cell_size, .h = game.cell_size * game.rows }, .{ .r = 255, .g = 255, .b = 255 });
+    render_quad(.{ .x = i32ToFloat(game.playfield_pos.x - game.cell_size), .y = i32ToFloat(game.playfield_pos.y + game.rows * game.cell_size), .w = game.cell_size * (game.cols + 2), .h = game.cell_size }, .{ .r = 255, .g = 255, .b = 255 });
+
+    render_quad(.{ .x = i32ToFloat(game.playfield_pos.x - 6 * game.cell_size), .y = i32ToFloat(game.playfield_pos.y), .w = 5 * game.cell_size, .h = game.cell_size }, .{ .r = 255, .g = 255, .b = 255 });
+    render_quad(.{ .x = i32ToFloat(game.playfield_pos.x - 6 * game.cell_size), .y = i32ToFloat(game.playfield_pos.y + 5 * game.cell_size), .w = 5 * game.cell_size, .h = game.cell_size }, .{ .r = 255, .g = 255, .b = 255 });
+    render_quad(.{ .x = i32ToFloat(game.playfield_pos.x - 6 * game.cell_size), .y = i32ToFloat(game.playfield_pos.y + game.cell_size), .w = game.cell_size, .h = game.cell_size * 4 }, .{ .r = 255, .g = 255, .b = 255 });
+
     const p = game.current_piece;
     for (0..4) |i| {
         //renders ghost piece
@@ -537,14 +580,15 @@ fn render_frame() void {
         render_quad(ghost_cell, ColorRGB{ .r = p.color.r / 2, .g = p.color.g / 2, .b = p.color.b / 2 });
         // renders piece
         const cell = Quad{ .x = i32ToFloat(game.playfield_pos.x + (p.pos[i].x + p.offset.x) * game.cell_size), .y = i32ToFloat(game.playfield_pos.y + (p.pos[i].y + p.offset.y) * game.cell_size), .w = game.cell_size, .h = game.cell_size };
-
         render_quad(cell, p.color);
-    }
 
-    // renders playfield
-    render_quad(.{ .x = i32ToFloat(game.playfield_pos.x - game.cell_size), .y = i32ToFloat(game.playfield_pos.y), .w = game.cell_size, .h = game.cell_size * game.rows }, .{ .r = 255, .g = 255, .b = 255 });
-    render_quad(.{ .x = i32ToFloat(game.playfield_pos.x + game.cell_size * game.cols), .y = i32ToFloat(game.playfield_pos.y), .w = game.cell_size, .h = game.cell_size * game.rows }, .{ .r = 255, .g = 255, .b = 255 });
-    render_quad(.{ .x = i32ToFloat(game.playfield_pos.x - game.cell_size), .y = i32ToFloat(game.playfield_pos.y + game.rows * game.cell_size), .w = game.cell_size * (game.cols + 2), .h = game.cell_size }, .{ .r = 255, .g = 255, .b = 255 });
+        // maybe save hold piece area in a variable?
+        // renders on hold piece
+        if (game.hold_piece.id != .NONE) {
+            const hold_cell = Quad{ .x = i32ToFloat((game.playfield_pos.x - 5 * game.cell_size) + game.hold_piece.pos[i].x * game.cell_size), .y = i32ToFloat((game.playfield_pos.y + game.cell_size) + game.hold_piece.pos[i].y * game.cell_size), .w = game.cell_size, .h = game.cell_size };
+            render_quad(hold_cell, game.hold_piece.color);
+        }
+    }
 
     // renders pieces in the matrix
     for (0..game.check_mat.len) |i| {
@@ -561,7 +605,7 @@ fn render_frame() void {
         for (0..4) |j| {
             const cell = Quad{
                 .x = i32ToFloat(game.piece_bag[i].pos[j].x * game.cell_size + game.piece_bag_preview.x + (game.cell_size * 2)),
-                .y = i32ToFloat(game.piece_bag[i].pos[j].y * game.cell_size + game.piece_bag_preview.y + (usizeToI32(i) * 5 * game.cell_size)),
+                .y = i32ToFloat(game.piece_bag[i].pos[j].y * game.cell_size + game.piece_bag_preview.y + (usizeToI32(i) * 4 * game.cell_size)),
                 .w = game.cell_size,
                 .h = game.cell_size,
             };
@@ -576,6 +620,7 @@ fn render_frame() void {
     game.input.rotate_counter_cw = false;
     game.input.rotate_cw = false;
     game.input.space = false;
+    game.input.c = false;
 
     game.frames += 1;
 }
@@ -651,8 +696,8 @@ export fn frame() void {
     sg.endPass();
     sg.commit();
 
-    printQuadInfo();
-    printBagInfo();
+    //  printQuadInfo();
+    //  printBagInfo();
 }
 
 export fn input_cb(e: ?*const sapp.Event) void {
@@ -684,9 +729,14 @@ export fn input_cb(e: ?*const sapp.Event) void {
                 game.input.rotate_cw = true;
                 std.debug.print("x key pressed rotate right bool: {s}\n", .{if (game.input.rotate_cw) "true" else "false"});
             },
+            .C => {
+                game.input.c = true;
+                std.debug.print("c key pressed rotate right bool: {s}\n", .{if (game.input.rotate_cw) "true" else "false"});
+            },
             .SPACE => {
                 game.input.space = true;
             },
+
             else => {},
         }
     } else if (event.?.type == .KEY_UP) {
@@ -696,8 +746,6 @@ export fn input_cb(e: ?*const sapp.Event) void {
 
 export fn cleanup() void {
     sg.shutdown();
-    state.quad_vertices.deinit();
-    state.quad_indices.deinit();
     _ = state.gpa.deinit();
 }
 
