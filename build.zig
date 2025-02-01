@@ -9,12 +9,18 @@ pub fn build(b: *Build) !void {
         .target = target,
         .optimize = optimize,
     });
+    const dep_zstbi = b.dependency("zstbi", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
     const mod_zigtris = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{
             .{ .name = "sokol", .module = dep_sokol.module("sokol") },
+            .{ .name = "zstbi", .module = dep_zstbi.module("root") },
         },
     });
 
@@ -32,6 +38,8 @@ fn buildNative(b: *Build, mod: *Build.Module) !void {
         .name = "zigtris",
         .root_module = mod,
     });
+    const zstbi = b.dependency("zstbi", .{});
+    exe.linkLibrary(zstbi.artifact("zstbi"));
     b.installArtifact(exe);
     const run = b.addRunArtifact(exe);
     b.step("run", "Run zigtris").dependOn(&run.step);

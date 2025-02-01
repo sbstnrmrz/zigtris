@@ -1,17 +1,19 @@
 // TODO: implement a better solution to the quad arrays
 
 const std = @import("std");
+const ArrayList = std.ArrayList;
+const print = std.debug.print;
+const zstbi = @import("zstbi");
 const sokol = @import("sokol");
 const slog = sokol.log;
 const sg = sokol.gfx;
 const sapp = sokol.app;
+const sdtx = sokol.debugtext;
 const sglue = sokol.glue;
 const stime = sokol.time;
 const m = @import("math.zig");
-const shader_quad = @import("shaders/quad.glsl.zig");
 const Vec4 = m.Vec4;
-const ArrayList = std.ArrayList;
-const print = std.debug.print;
+const shader_quad = @import("shaders/quad.glsl.zig");
 
 inline fn floatToUsize(f: f32) usize {
     return @as(usize, @intFromFloat(f));
@@ -63,8 +65,9 @@ const ColorRGB = struct {
 };
 
 const Vertex = struct {
-    x: f32,
-    y: f32,
+    pos: Vec3f = .{ .x = 0, .y = 0, .z = 0 },
+    uv: Vec2f = .{ .x = 0, .y = 0 },
+    color: Vec4f = .{ .x = 0, .y = 0, .z = 0, .w = 0 },
 };
 
 fn rgbToFloat(c: u8) f32 {
@@ -134,6 +137,24 @@ const Vec2 = struct {
     y: i32 = 0,
 };
 
+const Vec2f = struct {
+    x: f32 = 0,
+    y: f32 = 0,
+};
+
+const Vec3f = struct {
+    x: f32 = 0,
+    y: f32 = 0,
+    z: f32 = 0,
+};
+
+const Vec4f = struct {
+    x: f32 = 0,
+    y: f32 = 0,
+    z: f32 = 0,
+    w: f32 = 0,
+};
+
 const Piece = struct {
     pos: [4]Vec2,
     offset: Vec2,
@@ -192,6 +213,7 @@ const game = struct {
     var hold_piece: Piece = .{ .pos = .{ .{}, .{}, .{}, .{} }, .offset = .{}, .id = .NONE, .color = .{} };
     var piece_is_hold: bool = false;
     var can_hold: bool = false;
+    var charset: zstbi.Image = undefined;
 
     const input = struct {
         var up: bool = false;
@@ -436,7 +458,6 @@ fn getGhostPieceOffset() i32 {
 fn holdPiece() bool {
     if (game.can_hold) {
         if (game.piece_is_hold) {
-            std.debug.print("hold\n", .{});
             swap(Piece, &game.current_piece, &game.hold_piece);
             // ugly hack to reset the resets the piece pos, maybe make a function of this
             game.hold_piece = getPieceFromEnum(game.hold_piece.id);
@@ -445,8 +466,8 @@ fn holdPiece() bool {
             game.current_piece.offset.y = 0;
             game.piece_is_hold = true;
         } else {
-            std.debug.print("hold2\n", .{});
             game.hold_piece = game.current_piece;
+            game.hold_piece = getPieceFromEnum(game.current_piece.id);
             game.current_piece = getNextBagPiece();
             game.current_piece.offset.x = 3;
             game.current_piece.offset.y = 0;
@@ -505,7 +526,6 @@ fn printQuadInfo() void {
     std.log.debug("index buffer size: {d}\n\n", .{state.index_count * @sizeOf(f32)});
 
     //  print("quads: {d}\nvertices: {d}\nindices: {d}\n\n", .{ state.quad_count, state.quad_vertices.items.len, state.quad_indices.items.len });
-
 }
 
 fn printBagInfo() void {
@@ -519,7 +539,6 @@ fn printBagInfo() void {
 // maybe rename to tick or something
 fn render_frame() void {
     if (game.input.left) {
-        std.debug.print("check left\n", .{});
         game.current_piece.offset.x -= 1;
         checkPieceCollision(1);
     }
@@ -529,12 +548,10 @@ fn render_frame() void {
     }
 
     if (game.input.rotate_cw) {
-        std.debug.print("rotate right\n", .{});
         _ = rotatePiece(Rotation.cw);
         checkPieceCollision(1);
     }
     if (game.input.rotate_counter_cw) {
-        std.debug.print("rotate left\n", .{});
         _ = rotatePiece(Rotation.counter_cw);
         checkPieceCollision(2);
     }
@@ -555,7 +572,7 @@ fn render_frame() void {
         game.piece_exists = true;
     }
 
-    if (game.frames % 12 == 0) {
+    if (game.frames % 14 == 0) {
         if (checkPlacePiece()) {
             placePiece();
         } else {
@@ -569,9 +586,9 @@ fn render_frame() void {
     render_quad(.{ .x = i32ToFloat(game.playfield_pos.x + game.cell_size * game.cols), .y = i32ToFloat(game.playfield_pos.y), .w = game.cell_size, .h = game.cell_size * game.rows }, .{ .r = 255, .g = 255, .b = 255 });
     render_quad(.{ .x = i32ToFloat(game.playfield_pos.x - game.cell_size), .y = i32ToFloat(game.playfield_pos.y + game.rows * game.cell_size), .w = game.cell_size * (game.cols + 2), .h = game.cell_size }, .{ .r = 255, .g = 255, .b = 255 });
 
-    render_quad(.{ .x = i32ToFloat(game.playfield_pos.x - 6 * game.cell_size), .y = i32ToFloat(game.playfield_pos.y), .w = 5 * game.cell_size, .h = game.cell_size }, .{ .r = 255, .g = 255, .b = 255 });
-    render_quad(.{ .x = i32ToFloat(game.playfield_pos.x - 6 * game.cell_size), .y = i32ToFloat(game.playfield_pos.y + 5 * game.cell_size), .w = 5 * game.cell_size, .h = game.cell_size }, .{ .r = 255, .g = 255, .b = 255 });
-    render_quad(.{ .x = i32ToFloat(game.playfield_pos.x - 6 * game.cell_size), .y = i32ToFloat(game.playfield_pos.y + game.cell_size), .w = game.cell_size, .h = game.cell_size * 4 }, .{ .r = 255, .g = 255, .b = 255 });
+    //  render_quad(.{ .x = i32ToFloat(game.playfield_pos.x - 6 * game.cell_size), .y = i32ToFloat(game.playfield_pos.y), .w = 5 * game.cell_size, .h = game.cell_size }, .{ .r = 255, .g = 255, .b = 255 });
+    render_quad(.{ .x = i32ToFloat(game.playfield_pos.x - 6 * game.cell_size), .y = i32ToFloat(game.playfield_pos.y + 4 * game.cell_size), .w = 5 * game.cell_size, .h = game.cell_size }, .{ .r = 255, .g = 255, .b = 255 });
+    render_quad(.{ .x = i32ToFloat(game.playfield_pos.x - 6 * game.cell_size), .y = i32ToFloat(game.playfield_pos.y), .w = game.cell_size, .h = game.cell_size * 5 }, .{ .r = 255, .g = 255, .b = 255 });
 
     const p = game.current_piece;
     for (0..4) |i| {
@@ -668,6 +685,24 @@ export fn init() void {
         break :blk seed;
     });
 
+    zstbi.init(state.allocator);
+    defer zstbi.deinit();
+
+    game.charset = zstbi.Image.loadFromFile("assets/charset.png", 4) catch unreachable;
+    var desc: sg.ImageDesc = .{
+        .width = @as(i32, @intCast(game.charset.width)),
+        .height = @as(i32, @intCast(game.charset.height)),
+        .pixel_format = .RGBA8,
+    };
+    desc.data.subimage[0][0] = sg.asRange(game.charset.data);
+    state.bind.images[0] = sg.makeImage(desc);
+    state.bind.samplers[0] = sg.makeSampler(.{
+        .min_filter = .NEAREST,
+        .mag_filter = .NEAREST,
+        .wrap_u = .REPEAT,
+        .wrap_v = .REPEAT,
+    });
+
     gameInit();
 }
 
@@ -707,31 +742,24 @@ export fn input_cb(e: ?*const sapp.Event) void {
         switch (event.?.key_code) {
             .UP => {
                 game.input.up = true;
-                print("up", .{});
             },
             .DOWN => {
                 game.input.down = true;
-                print("down", .{});
             },
             .LEFT => {
                 game.input.left = true;
-                print("left", .{});
             },
             .RIGHT => {
                 game.input.right = true;
-                print("right", .{});
             },
             .Z => {
                 game.input.rotate_counter_cw = true;
-                std.debug.print("z key pressed rotate left bool: {s}\n", .{if (game.input.rotate_counter_cw) "true" else "false"});
             },
             .X => {
                 game.input.rotate_cw = true;
-                std.debug.print("x key pressed rotate right bool: {s}\n", .{if (game.input.rotate_cw) "true" else "false"});
             },
             .C => {
                 game.input.c = true;
-                std.debug.print("c key pressed rotate right bool: {s}\n", .{if (game.input.rotate_cw) "true" else "false"});
             },
             .SPACE => {
                 game.input.space = true;
