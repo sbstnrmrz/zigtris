@@ -13,6 +13,7 @@ out vec4 color;
 
 void main() {
     gl_Position = p * vec4(pos, 1.0);
+    uv = in_uv;
     color = in_color;
 }
 @end

@@ -14,6 +14,7 @@ const stime = sokol.time;
 const m = @import("math.zig");
 const Vec4 = m.Vec4;
 const shader_quad = @import("shaders/quad.glsl.zig");
+const tex_quad = @import("shaders/tex_quad.glsl.zig");
 
 inline fn floatToUsize(f: f32) usize {
     return @as(usize, @intFromFloat(f));
@@ -48,7 +49,7 @@ const state = struct {
     const vs_params: shader_quad.VsParams = .{ .p = ortho_proj_mat };
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
-    var vertices: [1500]Vertex = .{0} ** 1500;
+    var vertices: [1500]Vertex = undefined;
     var vertex_count: u32 = 0;
     var _quad_vertices: [10000]f32 = .{0} ** 10000;
     var _quad_indices: [2048]i16 = .{0} ** 2048;
@@ -96,10 +97,18 @@ fn pushVertex(vertex: Vertex) void {
 }
 
 fn pushQuad(quad: Quad) void {
-    pushVertex(Vertex{ .x = quad.x, .y = quad.y });
-    pushVertex(Vertex{ .x = quad.x + quad.w, .y = quad.y });
-    pushVertex(Vertex{ .x = quad.x, .y = quad.y + quad.h });
-    pushVertex(Vertex{ .x = quad.x + quad.w, .y = quad.y + quad.h });
+    pushVertex(Vertex{
+        .pos = .{ .x = quad.x, .y = quad.y, .z = 0 },
+    });
+    pushVertex(Vertex{
+        .pos = .{ .x = quad.x + quad.w, .y = quad.y, .z = 0 },
+    });
+    pushVertex(Vertex{
+        .pos = .{ .x = quad.x, .y = quad.y + quad.h, .z = 0 },
+    });
+    pushVertex(Vertex{
+        .pos = .{ .x = quad.x + quad.w, .y = quad.y + quad.h, .z = 0 },
+    });
 }
 
 const Quad = struct {
@@ -115,6 +124,72 @@ fn render_quad(quad: Quad, color: ColorRGB) void {
         quad.x + quad.w, quad.y,          0.0, rgbToFloat(color.r), rgbToFloat(color.g), rgbToFloat(color.b), 1.0,
         quad.x,          quad.y + quad.h, 0.0, rgbToFloat(color.r), rgbToFloat(color.g), rgbToFloat(color.b), 1.0,
         quad.x + quad.w, quad.y + quad.h, 0.0, rgbToFloat(color.r), rgbToFloat(color.g), rgbToFloat(color.b), 1.0,
+    };
+
+    for (vertices) |v| {
+        state._quad_vertices[state.vertex_count] = v;
+        state.vertex_count += 1;
+    }
+
+    pushIndex((@as(i16, @intCast(state.quad_count)) * 4) + 0);
+    pushIndex((@as(i16, @intCast(state.quad_count)) * 4) + 1);
+    pushIndex((@as(i16, @intCast(state.quad_count)) * 4) + 2);
+    pushIndex((@as(i16, @intCast(state.quad_count)) * 4) + 2);
+    pushIndex((@as(i16, @intCast(state.quad_count)) * 4) + 1);
+    pushIndex((@as(i16, @intCast(state.quad_count)) * 4) + 3);
+
+    state.quad_count += 1;
+}
+
+fn getCharUV(char: u8) Vec4f {
+    const _u0: f32 = @as(f32, @floatFromInt(((char - '0') * 8))) / @as(f32, @floatFromInt(game.charset.width));
+    const _v0: f32 = 0; //@as(f32, @floatFromInt(((char - '0')))) / @as(f32, @floatFromInt(game.charset.height));
+    const _u1: f32 = @as(f32, @floatFromInt(((char - '0') * 8 + 7))) / @as(f32, @floatFromInt(game.charset.width));
+    const _v1: f32 = 7.0 / @as(f32, @floatFromInt(game.charset.height));
+    return Vec4f{ .x = _u0, .y = _v0, .z = _u1, .w = _v1 };
+}
+
+fn renderText(pos: Vec2f, text: []const u8, color: ColorRGB) void {
+    for (text) |char| {
+        const uv = getCharUV(char);
+        pushVertex(.{
+            .pos = .{ .x = pos.x, .y = pos.y },
+            .uv = .{ .x = uv.x, .y = uv.y },
+            .color = .{ .x = rgbToFloat(color.r), .y = rgbToFloat(color.g), .z = rgbToFloat(color.b), .w = 1.0 },
+        });
+        pushVertex(.{
+            .pos = .{ .x = pos.x + 7 * 5, .y = pos.y },
+            .uv = .{ .x = uv.z, .y = uv.y },
+            .color = .{ .x = rgbToFloat(color.r), .y = rgbToFloat(color.g), .z = rgbToFloat(color.b), .w = 1.0 },
+        });
+        pushVertex(.{
+            .pos = .{ .x = pos.x, .y = pos.y + 7 * 5 },
+            .uv = .{ .x = uv.x, .y = uv.w },
+            .color = .{ .x = rgbToFloat(color.r), .y = rgbToFloat(color.g), .z = rgbToFloat(color.b), .w = 1.0 },
+        });
+        pushVertex(.{
+            .pos = .{ .x = pos.x + 7 * 5, .y = pos.y + 7 * 5 },
+            .uv = .{ .x = uv.z, .y = uv.w },
+            .color = .{ .x = rgbToFloat(color.r), .y = rgbToFloat(color.g), .z = rgbToFloat(color.b), .w = 1.0 },
+        });
+
+        pushIndex((@as(i16, @intCast(state.quad_count)) * 4) + 0);
+        pushIndex((@as(i16, @intCast(state.quad_count)) * 4) + 1);
+        pushIndex((@as(i16, @intCast(state.quad_count)) * 4) + 2);
+        pushIndex((@as(i16, @intCast(state.quad_count)) * 4) + 2);
+        pushIndex((@as(i16, @intCast(state.quad_count)) * 4) + 1);
+        pushIndex((@as(i16, @intCast(state.quad_count)) * 4) + 3);
+
+        state.quad_count += 1;
+    }
+}
+
+fn renderRectTexture(rect: Quad, color: ColorRGB) void {
+    const vertices = [_]f32{
+        rect.x,          rect.y,          0.0, rgbToFloat(color.r), rgbToFloat(color.g), rgbToFloat(color.b), 1.0,
+        rect.x + rect.w, rect.y,          0.0, rgbToFloat(color.r), rgbToFloat(color.g), rgbToFloat(color.b), 1.0,
+        rect.x,          rect.y + rect.h, 0.0, rgbToFloat(color.r), rgbToFloat(color.g), rgbToFloat(color.b), 1.0,
+        rect.x + rect.w, rect.y + rect.h, 0.0, rgbToFloat(color.r), rgbToFloat(color.g), rgbToFloat(color.b), 1.0,
     };
 
     for (vertices) |v| {
@@ -197,8 +272,6 @@ const Rotation = enum(u8) {
     cw = 0,
     counter_cw = 1,
 };
-
-const Queue = struct {};
 
 const game = struct {
     const cell_size: i32 = 16;
@@ -663,12 +736,23 @@ export fn init() void {
     });
 
     // a shader and pipeline state object
+    //  state.pip = sg.makePipeline(.{
+    //      .shader = sg.makeShader(shader_quad.quadShaderDesc(sg.queryBackend())),
+    //      .layout = init: {
+    //          var l = sg.VertexLayoutState{};
+    //          l.attrs[shader_quad.ATTR_quad_pos].format = .FLOAT3;
+    //          l.attrs[shader_quad.ATTR_quad_in_color].format = .FLOAT4;
+    //          break :init l;
+    //      },
+    //      .index_type = .UINT16,
+    //  });
     state.pip = sg.makePipeline(.{
-        .shader = sg.makeShader(shader_quad.quadShaderDesc(sg.queryBackend())),
+        .shader = sg.makeShader(tex_quad.texQuadShaderDesc(sg.queryBackend())),
         .layout = init: {
             var l = sg.VertexLayoutState{};
-            l.attrs[shader_quad.ATTR_quad_pos].format = .FLOAT3;
-            l.attrs[shader_quad.ATTR_quad_in_color].format = .FLOAT4;
+            l.attrs[tex_quad.ATTR_tex_quad_pos].format = .FLOAT3;
+            l.attrs[tex_quad.ATTR_tex_quad_in_uv].format = .FLOAT2;
+            l.attrs[tex_quad.ATTR_tex_quad_in_color].format = .FLOAT4;
             break :init l;
         },
         .index_type = .UINT16,
@@ -694,7 +778,16 @@ export fn init() void {
         .height = @as(i32, @intCast(game.charset.height)),
         .pixel_format = .RGBA8,
     };
-    desc.data.subimage[0][0] = sg.asRange(game.charset.data);
+    desc.data.subimage[0][0] = .{ .ptr = game.charset.data.ptr, .size = game.charset.width * game.charset.height * 4 };
+
+    var color_texture = sg.ImageDesc{
+        .width = 1,
+        .height = 1,
+        .pixel_format = .RGBA8,
+    };
+    color_texture.data.subimage[0][0] = sg.asRange(&[_]u8{ 255, 255, 255, 255 });
+
+    state.bind.images[1] = sg.makeImage(color_texture);
     state.bind.images[0] = sg.makeImage(desc);
     state.bind.samplers[0] = sg.makeSampler(.{
         .min_filter = .NEAREST,
@@ -715,18 +808,24 @@ export fn frame() void {
 
     sg.beginPass(.{ .action = state.pass_action, .swapchain = sglue.swapchain() });
 
-    render_frame();
+    //  render_frame();
 
-    const vertices = state._quad_vertices[0..state.vertex_count];
+    renderText(.{ .x = 10, .y = 10 }, "1", .{ .r = 255, .g = 255, .b = 255 });
+
+    const vertices = state.vertices[0..state.vertex_count];
     const indices = state._quad_indices[0..state.index_count];
     if (state.quad_count > 0) {
-        sg.updateBuffer(state.bind.vertex_buffers[0], sg.asRange(vertices));
+        sg.updateBuffer(state.bind.vertex_buffers[0], .{
+            .ptr = vertices.ptr,
+            .size = state.vertex_count * @sizeOf(Vertex),
+        });
         sg.updateBuffer(state.bind.index_buffer, sg.asRange(indices));
     }
 
     sg.applyPipeline(state.pip);
     sg.applyBindings(state.bind);
-    sg.applyUniforms(shader_quad.UB_vs_params, sg.asRange(&state.vs_params));
+    //  sg.applyUniforms(shader_quad.UB_vs_params, sg.asRange(&state.vs_params));
+    sg.applyUniforms(tex_quad.UB_vs_params, sg.asRange(&state.vs_params));
     sg.draw(0, state.quad_count * 6, 1);
     sg.endPass();
     sg.commit();
