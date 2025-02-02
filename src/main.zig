@@ -46,14 +46,18 @@ const state = struct {
     var bind: sg.Bindings = .{};
     var pip: sg.Pipeline = .{};
     var pass_action: sg.PassAction = .{};
-    const vs_params: shader_quad.VsParams = .{ .p = ortho_proj_mat };
+    const vs_params: tex_quad.VsParams = .{ .p = ortho_proj_mat };
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
-    var vertices: [1500]Vertex = undefined;
+    const max_rect_num = 1000;
+    var vertices: [max_rect_num]Vertex = undefined;
     var vertex_count: u32 = 0;
     var _quad_vertices: [10000]f32 = .{0} ** 10000;
-    var _quad_indices: [2048]i16 = .{0} ** 2048;
+    var _quad_indices: [max_rect_num * 6]i16 = .{0} ** (max_rect_num * 6);
     var quad_count: u32 = 0;
+
+    var color_texture: sg.Image = undefined;
+    var font_atlas: sg.Image = undefined;
 
     var index_count: u32 = 0;
     var prng: std.Random.DefaultPrng = undefined;
@@ -118,6 +122,13 @@ const Quad = struct {
     h: f32,
 };
 
+const Rect = struct {
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+};
+
 fn render_quad(quad: Quad, color: ColorRGB) void {
     const vertices = [_]f32{
         quad.x,          quad.y,          0.0, rgbToFloat(color.r), rgbToFloat(color.g), rgbToFloat(color.b), 1.0,
@@ -141,37 +152,75 @@ fn render_quad(quad: Quad, color: ColorRGB) void {
     state.quad_count += 1;
 }
 
+fn drawRectColor(rect: Rect, color: ColorRGB) void {
+    pushVertex(.{
+        .pos = .{ .x = rect.x, .y = rect.y },
+        .uv = .{ .x = 0, .y = 0 },
+        .color = .{ .x = rgbToFloat(color.r), .y = rgbToFloat(color.g), .z = rgbToFloat(color.b), .w = 1.0 },
+    });
+    pushVertex(.{
+        .pos = .{ .x = rect.x + rect.w, .y = rect.y },
+        .uv = .{ .x = 1, .y = 0 },
+        .color = .{ .x = rgbToFloat(color.r), .y = rgbToFloat(color.g), .z = rgbToFloat(color.b), .w = 1.0 },
+    });
+    pushVertex(.{
+        .pos = .{ .x = rect.x, .y = rect.y + rect.h },
+        .uv = .{ .x = 0, .y = 1 },
+        .color = .{ .x = rgbToFloat(color.r), .y = rgbToFloat(color.g), .z = rgbToFloat(color.b), .w = 1.0 },
+    });
+    pushVertex(.{
+        .pos = .{ .x = rect.x + rect.w, .y = rect.y + rect.h },
+        .uv = .{ .x = 1, .y = 1 },
+        .color = .{ .x = rgbToFloat(color.r), .y = rgbToFloat(color.g), .z = rgbToFloat(color.b), .w = 1.0 },
+    });
+
+    pushIndex((@as(i16, @intCast(state.quad_count)) * 4) + 0);
+    pushIndex((@as(i16, @intCast(state.quad_count)) * 4) + 1);
+    pushIndex((@as(i16, @intCast(state.quad_count)) * 4) + 2);
+    pushIndex((@as(i16, @intCast(state.quad_count)) * 4) + 2);
+    pushIndex((@as(i16, @intCast(state.quad_count)) * 4) + 1);
+    pushIndex((@as(i16, @intCast(state.quad_count)) * 4) + 3);
+
+    state.quad_count += 1;
+}
+
 fn getCharUV(char: u8) Vec4f {
-    const _u0: f32 = @as(f32, @floatFromInt(((char - '0') * 8))) / @as(f32, @floatFromInt(game.charset.width));
+    const char_pos = Vec2f{
+        .x = @as(f32, @floatFromInt(((@as(i32, @intCast(char)) - 46) * 8))),
+        .y = 0,
+    };
+    const _u0: f32 = char_pos.x / @as(f32, @floatFromInt(game.charset.width));
     const _v0: f32 = 0; //@as(f32, @floatFromInt(((char - '0')))) / @as(f32, @floatFromInt(game.charset.height));
-    const _u1: f32 = @as(f32, @floatFromInt(((char - '0') * 8 + 7))) / @as(f32, @floatFromInt(game.charset.width));
+    const _u1: f32 = (char_pos.x + 7) / @as(f32, @floatFromInt(game.charset.width));
     const _v1: f32 = 7.0 / @as(f32, @floatFromInt(game.charset.height));
     return Vec4f{ .x = _u0, .y = _v0, .z = _u1, .w = _v1 };
 }
 
-fn renderText(pos: Vec2f, text: []const u8, color: ColorRGB) void {
+fn drawText(pos: Vec2f, text: []const u8, color: ColorRGB) void {
+    var _pos = pos;
     for (text) |char| {
         const uv = getCharUV(char);
         pushVertex(.{
-            .pos = .{ .x = pos.x, .y = pos.y },
+            .pos = .{ .x = _pos.x, .y = _pos.y },
             .uv = .{ .x = uv.x, .y = uv.y },
             .color = .{ .x = rgbToFloat(color.r), .y = rgbToFloat(color.g), .z = rgbToFloat(color.b), .w = 1.0 },
         });
         pushVertex(.{
-            .pos = .{ .x = pos.x + 7 * 5, .y = pos.y },
+            .pos = .{ .x = _pos.x + 7 * 5, .y = _pos.y },
             .uv = .{ .x = uv.z, .y = uv.y },
             .color = .{ .x = rgbToFloat(color.r), .y = rgbToFloat(color.g), .z = rgbToFloat(color.b), .w = 1.0 },
         });
         pushVertex(.{
-            .pos = .{ .x = pos.x, .y = pos.y + 7 * 5 },
+            .pos = .{ .x = _pos.x, .y = _pos.y + 7 * 5 },
             .uv = .{ .x = uv.x, .y = uv.w },
             .color = .{ .x = rgbToFloat(color.r), .y = rgbToFloat(color.g), .z = rgbToFloat(color.b), .w = 1.0 },
         });
         pushVertex(.{
-            .pos = .{ .x = pos.x + 7 * 5, .y = pos.y + 7 * 5 },
+            .pos = .{ .x = _pos.x + 7 * 5, .y = _pos.y + 7 * 5 },
             .uv = .{ .x = uv.z, .y = uv.w },
             .color = .{ .x = rgbToFloat(color.r), .y = rgbToFloat(color.g), .z = rgbToFloat(color.b), .w = 1.0 },
         });
+        _pos.x += 7 * 5 + 5;
 
         pushIndex((@as(i16, @intCast(state.quad_count)) * 4) + 0);
         pushIndex((@as(i16, @intCast(state.quad_count)) * 4) + 1);
@@ -206,6 +255,53 @@ fn renderRectTexture(rect: Quad, color: ColorRGB) void {
 
     state.quad_count += 1;
 }
+
+const TimerState = enum(u8) {
+    stopped = 0,
+    running = 1,
+    paused = 2,
+};
+
+const Timer = struct {
+    start_time: u64 = 0,
+    elapsed_time: u64 = 0,
+    state: TimerState = .stopped,
+
+    fn update(self: *Timer) void {
+        if (self.state == .running) {
+            self.*.elapsed_time = stime.diff(stime.now(), self.start_time);
+        }
+    }
+
+    fn stop(self: *Timer) void {
+        self.*.state = .stopped;
+        self.*.start_time = 0;
+        self.*.elapsed_time = 0;
+    }
+
+    fn start(self: *Timer) void {
+        self.*.start_time = stime.now();
+        self.*.state = .running;
+    }
+
+    fn pause(self: *Timer) void {
+        self.*.state = .paused;
+    }
+
+    fn getElapsedInNs(self: *Timer) f64 {
+        return stime.ns(self.elapsed_time);
+    }
+
+    fn getElapsedInMs(self: *Timer) f64 {
+        return stime.ms(self.elapsed_time);
+    }
+    fn getElapsedInSecs(self: *Timer) f64 {
+        return stime.sec(self.elapsed_time);
+    }
+    fn getElapsedInMins(self: *Timer) f64 {
+        return self.getElapsedInSecs() / 60.0;
+    }
+};
 
 const Vec2 = struct {
     x: i32 = 0,
@@ -245,6 +341,7 @@ const Colors = enum {
     const pink = ColorRGB{ .r = 166, .g = 102, .b = 133 };
     const aquamarine = ColorRGB{ .r = 116, .g = 156, .b = 111 };
     const orange = ColorRGB{ .r = 214, .g = 93, .b = 14 };
+    const white = ColorRGB{ .r = 255, .g = 255, .b = 255 };
 };
 
 const Shapes = enum {
@@ -300,6 +397,7 @@ const game = struct {
     };
     var check_mat: [rows][cols]i32 = .{.{0} ** cols} ** rows;
     var frames: u64 = 0;
+    var timer: Timer = undefined;
     var lines_cleared: i32 = 0;
 };
 
@@ -307,6 +405,7 @@ fn gameInit() void {
     game.piece_exists = false;
     game.can_hold = true;
     refillBag();
+    game.timer.start();
 }
 
 fn getRandomPiece() Piece {
@@ -325,7 +424,7 @@ fn rotatePiece(rotation: Rotation) bool {
     const rows: usize = if (@as(u8, @intFromEnum(game.current_piece.id)) > @as(u8, @intFromEnum(ShapeID.O))) 3 else 4;
     const cols: usize = rows;
 
-    var mat: [4][4]i32 = .{.{0} ** 4} ** 4;
+    var mat: [5][4]i32 = .{.{0} ** 4} ** 4;
     //  @memset(&mat, 0);
 
     for (0..4) |i| {
@@ -611,6 +710,7 @@ fn printBagInfo() void {
 
 // maybe rename to tick or something
 fn render_frame() void {
+    game.timer.update();
     if (game.input.left) {
         game.current_piece.offset.x -= 1;
         checkPieceCollision(1);
@@ -724,28 +824,26 @@ export fn init() void {
 
     // a vertex buffer
     state.bind.vertex_buffers[0] = sg.makeBuffer(.{
-        .size = 20000,
-        .usage = .DYNAMIC,
+        .size = state.max_rect_num * @sizeOf(Vertex),
         .type = .VERTEXBUFFER,
+        .usage = .DYNAMIC,
     });
 
     state.bind.index_buffer = sg.makeBuffer(.{
-        .size = 2048,
+        .size = state.max_rect_num * 6,
         .type = .INDEXBUFFER,
         .usage = .DYNAMIC,
     });
 
-    // a shader and pipeline state object
-    //  state.pip = sg.makePipeline(.{
-    //      .shader = sg.makeShader(shader_quad.quadShaderDesc(sg.queryBackend())),
-    //      .layout = init: {
-    //          var l = sg.VertexLayoutState{};
-    //          l.attrs[shader_quad.ATTR_quad_pos].format = .FLOAT3;
-    //          l.attrs[shader_quad.ATTR_quad_in_color].format = .FLOAT4;
-    //          break :init l;
-    //      },
-    //      .index_type = .UINT16,
-    //  });
+    const blend = sg.BlendState{
+        .enabled = true,
+        .src_factor_rgb = .SRC_ALPHA,
+        .dst_factor_rgb = .ONE_MINUS_SRC_ALPHA,
+        .op_rgb = .ADD,
+        .src_factor_alpha = .SRC_ALPHA,
+        .dst_factor_alpha = .ONE_MINUS_SRC_ALPHA,
+        .op_alpha = .ADD,
+    };
     state.pip = sg.makePipeline(.{
         .shader = sg.makeShader(tex_quad.texQuadShaderDesc(sg.queryBackend())),
         .layout = init: {
@@ -754,6 +852,12 @@ export fn init() void {
             l.attrs[tex_quad.ATTR_tex_quad_in_uv].format = .FLOAT2;
             l.attrs[tex_quad.ATTR_tex_quad_in_color].format = .FLOAT4;
             break :init l;
+        },
+        // hacky but worked
+        .colors = init: {
+            var c = [4]sg.ColorTargetState{ .{}, .{}, .{}, .{} };
+            c[0].blend = blend;
+            break :init c;
         },
         .index_type = .UINT16,
     });
@@ -787,8 +891,8 @@ export fn init() void {
     };
     color_texture.data.subimage[0][0] = sg.asRange(&[_]u8{ 255, 255, 255, 255 });
 
-    state.bind.images[1] = sg.makeImage(color_texture);
-    state.bind.images[0] = sg.makeImage(desc);
+    state.color_texture = sg.makeImage(color_texture);
+    state.font_atlas = sg.makeImage(desc);
     state.bind.samplers[0] = sg.makeSampler(.{
         .min_filter = .NEAREST,
         .mag_filter = .NEAREST,
@@ -806,32 +910,62 @@ export fn frame() void {
     state.bind.vertex_buffer_offsets[0] = 0;
     state.bind.index_buffer_offset = 0;
 
+    game.timer.update();
+
+    var buf: [10]u8 = .{0} ** 10;
+    const format = std.fmt.bufPrint(&buf, "{d:.2}", .{game.timer.getElapsedInSecs()}) catch unreachable;
+
     sg.beginPass(.{ .action = state.pass_action, .swapchain = sglue.swapchain() });
 
     //  render_frame();
 
-    renderText(.{ .x = 10, .y = 10 }, "1", .{ .r = 255, .g = 255, .b = 255 });
+    drawText(.{ .x = 10, .y = 10 }, format, Colors.white);
 
-    const vertices = state.vertices[0..state.vertex_count];
-    const indices = state._quad_indices[0..state.index_count];
+    var vertices = state.vertices[0..state.vertex_count];
+    var indices = state._quad_indices[0..state.index_count];
+    var vertex_offset: i32 = 0;
+    var index_offset: i32 = 0;
     if (state.quad_count > 0) {
-        sg.updateBuffer(state.bind.vertex_buffers[0], .{
+        vertex_offset = sg.appendBuffer(state.bind.vertex_buffers[0], .{
             .ptr = vertices.ptr,
             .size = state.vertex_count * @sizeOf(Vertex),
         });
-        sg.updateBuffer(state.bind.index_buffer, sg.asRange(indices));
+        index_offset = sg.appendBuffer(state.bind.index_buffer, sg.asRange(indices));
     }
 
+    state.bind.images[0] = state.font_atlas;
     sg.applyPipeline(state.pip);
     sg.applyBindings(state.bind);
-    //  sg.applyUniforms(shader_quad.UB_vs_params, sg.asRange(&state.vs_params));
     sg.applyUniforms(tex_quad.UB_vs_params, sg.asRange(&state.vs_params));
+    sg.draw(0, state.quad_count * 6, 1);
+
+    state.quad_count = 0;
+    state.vertex_count = 0;
+    state.index_count = 0;
+
+    drawRectColor(.{ .x = 100, .y = 100, .w = 32, .h = 32 }, Colors.red);
+    drawRectColor(.{ .x = 100, .y = 100, .w = 32, .h = 32 }, Colors.red);
+
+    vertices = state.vertices[0..state.vertex_count];
+    indices = state._quad_indices[0..state.index_count];
+    if (state.quad_count > 0) {
+        vertex_offset = sg.appendBuffer(state.bind.vertex_buffers[0], .{
+            .ptr = vertices.ptr,
+            .size = state.vertex_count * @sizeOf(Vertex),
+        });
+        index_offset = sg.appendBuffer(state.bind.index_buffer, sg.asRange(indices));
+    }
+
+    state.bind.images[0] = state.color_texture;
+    state.bind.vertex_buffer_offsets[0] = vertex_offset;
+    state.bind.index_buffer_offset = index_offset;
+    sg.applyPipeline(state.pip);
+    sg.applyBindings(state.bind);
+    sg.applyUniforms(tex_quad.UB_vs_params, sg.asRange(&state.vs_params));
+
     sg.draw(0, state.quad_count * 6, 1);
     sg.endPass();
     sg.commit();
-
-    //  printQuadInfo();
-    //  printBagInfo();
 }
 
 export fn input_cb(e: ?*const sapp.Event) void {

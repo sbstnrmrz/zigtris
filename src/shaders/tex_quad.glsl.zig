@@ -1,5 +1,6 @@
 const sg = @import("sokol").gfx;
 const std = @import("std");
+const m = @import("../math.zig");
 //
 //    #version:1# (machine generated, don't edit!)
 //
@@ -38,7 +39,7 @@ pub const UB_vs_params = 0;
 pub const IMG_tex = 0;
 pub const SMP_default_sampler = 0;
 pub const VsParams = extern struct {
-    p: [16]f32 align(16),
+    p: m.Mat4 align(16),
 };
 //
 //    #version 300 es
