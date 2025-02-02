@@ -54,6 +54,11 @@ const state = struct {
     var vertex_count: u32 = 0;
     var _quad_vertices: [10000]f32 = .{0} ** 10000;
     var _quad_indices: [max_rect_num * 6]i16 = .{0} ** (max_rect_num * 6);
+    var char_vertices: [10000]Vertex = undefined;
+    var char_indices: [10000]i16 = .{0} ** 10000;
+    var char_vertex_count: u32 = 0;
+    var char_index_count: u32 = 0;
+    var char_count: u32 = 0;
     var quad_count: u32 = 0;
 
     var color_texture: sg.Image = undefined;
@@ -95,24 +100,19 @@ fn pushIndex(index: i16) void {
     state.index_count += 1;
 }
 
+fn pushCharIndex(index: i16) void {
+    state.char_indices[@as(usize, @intCast(state.char_index_count))] = index;
+    state.char_index_count += 1;
+}
+
+fn pushCharVertex(vertex: Vertex) void {
+    state.char_vertices[state.char_vertex_count] = vertex;
+    state.char_vertex_count += 1;
+}
+
 fn pushVertex(vertex: Vertex) void {
     state.vertices[state.vertex_count] = vertex;
     state.vertex_count += 1;
-}
-
-fn pushQuad(quad: Quad) void {
-    pushVertex(Vertex{
-        .pos = .{ .x = quad.x, .y = quad.y, .z = 0 },
-    });
-    pushVertex(Vertex{
-        .pos = .{ .x = quad.x + quad.w, .y = quad.y, .z = 0 },
-    });
-    pushVertex(Vertex{
-        .pos = .{ .x = quad.x, .y = quad.y + quad.h, .z = 0 },
-    });
-    pushVertex(Vertex{
-        .pos = .{ .x = quad.x + quad.w, .y = quad.y + quad.h, .z = 0 },
-    });
 }
 
 const Quad = struct {
@@ -200,36 +200,36 @@ fn drawText(pos: Vec2f, text: []const u8, color: ColorRGB) void {
     var _pos = pos;
     for (text) |char| {
         const uv = getCharUV(char);
-        pushVertex(.{
+        pushCharVertex(.{
             .pos = .{ .x = _pos.x, .y = _pos.y },
             .uv = .{ .x = uv.x, .y = uv.y },
             .color = .{ .x = rgbToFloat(color.r), .y = rgbToFloat(color.g), .z = rgbToFloat(color.b), .w = 1.0 },
         });
-        pushVertex(.{
+        pushCharVertex(.{
             .pos = .{ .x = _pos.x + 7 * 5, .y = _pos.y },
             .uv = .{ .x = uv.z, .y = uv.y },
             .color = .{ .x = rgbToFloat(color.r), .y = rgbToFloat(color.g), .z = rgbToFloat(color.b), .w = 1.0 },
         });
-        pushVertex(.{
+        pushCharVertex(.{
             .pos = .{ .x = _pos.x, .y = _pos.y + 7 * 5 },
             .uv = .{ .x = uv.x, .y = uv.w },
             .color = .{ .x = rgbToFloat(color.r), .y = rgbToFloat(color.g), .z = rgbToFloat(color.b), .w = 1.0 },
         });
-        pushVertex(.{
+        pushCharVertex(.{
             .pos = .{ .x = _pos.x + 7 * 5, .y = _pos.y + 7 * 5 },
             .uv = .{ .x = uv.z, .y = uv.w },
             .color = .{ .x = rgbToFloat(color.r), .y = rgbToFloat(color.g), .z = rgbToFloat(color.b), .w = 1.0 },
         });
         _pos.x += 7 * 5 + 5;
 
-        pushIndex((@as(i16, @intCast(state.quad_count)) * 4) + 0);
-        pushIndex((@as(i16, @intCast(state.quad_count)) * 4) + 1);
-        pushIndex((@as(i16, @intCast(state.quad_count)) * 4) + 2);
-        pushIndex((@as(i16, @intCast(state.quad_count)) * 4) + 2);
-        pushIndex((@as(i16, @intCast(state.quad_count)) * 4) + 1);
-        pushIndex((@as(i16, @intCast(state.quad_count)) * 4) + 3);
+        pushCharIndex((@as(i16, @intCast(state.char_count)) * 4) + 0);
+        pushCharIndex((@as(i16, @intCast(state.char_count)) * 4) + 1);
+        pushCharIndex((@as(i16, @intCast(state.char_count)) * 4) + 2);
+        pushCharIndex((@as(i16, @intCast(state.char_count)) * 4) + 2);
+        pushCharIndex((@as(i16, @intCast(state.char_count)) * 4) + 1);
+        pushCharIndex((@as(i16, @intCast(state.char_count)) * 4) + 3);
 
-        state.quad_count += 1;
+        state.char_count += 1;
     }
 }
 
@@ -424,7 +424,7 @@ fn rotatePiece(rotation: Rotation) bool {
     const rows: usize = if (@as(u8, @intFromEnum(game.current_piece.id)) > @as(u8, @intFromEnum(ShapeID.O))) 3 else 4;
     const cols: usize = rows;
 
-    var mat: [5][4]i32 = .{.{0} ** 4} ** 4;
+    var mat: [4][4]i32 = .{.{0} ** 4} ** 4;
     //  @memset(&mat, 0);
 
     for (0..4) |i| {
@@ -755,28 +755,28 @@ fn render_frame() void {
     game.lines_cleared += clearLines();
 
     // renders playfield
-    render_quad(.{ .x = i32ToFloat(game.playfield_pos.x - game.cell_size), .y = i32ToFloat(game.playfield_pos.y), .w = game.cell_size, .h = game.cell_size * game.rows }, .{ .r = 255, .g = 255, .b = 255 });
-    render_quad(.{ .x = i32ToFloat(game.playfield_pos.x + game.cell_size * game.cols), .y = i32ToFloat(game.playfield_pos.y), .w = game.cell_size, .h = game.cell_size * game.rows }, .{ .r = 255, .g = 255, .b = 255 });
-    render_quad(.{ .x = i32ToFloat(game.playfield_pos.x - game.cell_size), .y = i32ToFloat(game.playfield_pos.y + game.rows * game.cell_size), .w = game.cell_size * (game.cols + 2), .h = game.cell_size }, .{ .r = 255, .g = 255, .b = 255 });
+    drawRectColor(.{ .x = i32ToFloat(game.playfield_pos.x - game.cell_size), .y = i32ToFloat(game.playfield_pos.y), .w = game.cell_size, .h = game.cell_size * game.rows }, .{ .r = 255, .g = 255, .b = 255 });
+    drawRectColor(.{ .x = i32ToFloat(game.playfield_pos.x + game.cell_size * game.cols), .y = i32ToFloat(game.playfield_pos.y), .w = game.cell_size, .h = game.cell_size * game.rows }, .{ .r = 255, .g = 255, .b = 255 });
+    drawRectColor(.{ .x = i32ToFloat(game.playfield_pos.x - game.cell_size), .y = i32ToFloat(game.playfield_pos.y + game.rows * game.cell_size), .w = game.cell_size * (game.cols + 2), .h = game.cell_size }, .{ .r = 255, .g = 255, .b = 255 });
 
-    //  render_quad(.{ .x = i32ToFloat(game.playfield_pos.x - 6 * game.cell_size), .y = i32ToFloat(game.playfield_pos.y), .w = 5 * game.cell_size, .h = game.cell_size }, .{ .r = 255, .g = 255, .b = 255 });
-    render_quad(.{ .x = i32ToFloat(game.playfield_pos.x - 6 * game.cell_size), .y = i32ToFloat(game.playfield_pos.y + 4 * game.cell_size), .w = 5 * game.cell_size, .h = game.cell_size }, .{ .r = 255, .g = 255, .b = 255 });
-    render_quad(.{ .x = i32ToFloat(game.playfield_pos.x - 6 * game.cell_size), .y = i32ToFloat(game.playfield_pos.y), .w = game.cell_size, .h = game.cell_size * 5 }, .{ .r = 255, .g = 255, .b = 255 });
+    //  drawRectColor(.{ .x = i32ToFloat(game.playfield_pos.x - 6 * game.cell_size), .y = i32ToFloat(game.playfield_pos.y), .w = 5 * game.cell_size, .h = game.cell_size }, .{ .r = 255, .g = 255, .b = 255 });
+    drawRectColor(.{ .x = i32ToFloat(game.playfield_pos.x - 6 * game.cell_size), .y = i32ToFloat(game.playfield_pos.y + 4 * game.cell_size), .w = 5 * game.cell_size, .h = game.cell_size }, .{ .r = 255, .g = 255, .b = 255 });
+    drawRectColor(.{ .x = i32ToFloat(game.playfield_pos.x - 6 * game.cell_size), .y = i32ToFloat(game.playfield_pos.y), .w = game.cell_size, .h = game.cell_size * 5 }, .{ .r = 255, .g = 255, .b = 255 });
 
     const p = game.current_piece;
     for (0..4) |i| {
         //renders ghost piece
-        const ghost_cell = Quad{ .x = i32ToFloat(game.playfield_pos.x + (p.pos[i].x + p.offset.x) * game.cell_size), .y = i32ToFloat(game.playfield_pos.y + (p.pos[i].y + getGhostPieceOffset()) * game.cell_size), .w = game.cell_size, .h = game.cell_size };
-        render_quad(ghost_cell, ColorRGB{ .r = p.color.r / 2, .g = p.color.g / 2, .b = p.color.b / 2 });
+        const ghost_cell = Rect{ .x = i32ToFloat(game.playfield_pos.x + (p.pos[i].x + p.offset.x) * game.cell_size), .y = i32ToFloat(game.playfield_pos.y + (p.pos[i].y + getGhostPieceOffset()) * game.cell_size), .w = game.cell_size, .h = game.cell_size };
+        drawRectColor(ghost_cell, ColorRGB{ .r = p.color.r / 2, .g = p.color.g / 2, .b = p.color.b / 2 });
         // renders piece
-        const cell = Quad{ .x = i32ToFloat(game.playfield_pos.x + (p.pos[i].x + p.offset.x) * game.cell_size), .y = i32ToFloat(game.playfield_pos.y + (p.pos[i].y + p.offset.y) * game.cell_size), .w = game.cell_size, .h = game.cell_size };
-        render_quad(cell, p.color);
+        const cell = Rect{ .x = i32ToFloat(game.playfield_pos.x + (p.pos[i].x + p.offset.x) * game.cell_size), .y = i32ToFloat(game.playfield_pos.y + (p.pos[i].y + p.offset.y) * game.cell_size), .w = game.cell_size, .h = game.cell_size };
+        drawRectColor(cell, p.color);
 
         // maybe save hold piece area in a variable?
         // renders on hold piece
         if (game.hold_piece.id != .NONE) {
-            const hold_cell = Quad{ .x = i32ToFloat((game.playfield_pos.x - 5 * game.cell_size) + game.hold_piece.pos[i].x * game.cell_size), .y = i32ToFloat((game.playfield_pos.y + game.cell_size) + game.hold_piece.pos[i].y * game.cell_size), .w = game.cell_size, .h = game.cell_size };
-            render_quad(hold_cell, game.hold_piece.color);
+            const hold_cell = Rect{ .x = i32ToFloat((game.playfield_pos.x - 5 * game.cell_size) + game.hold_piece.pos[i].x * game.cell_size), .y = i32ToFloat((game.playfield_pos.y + game.cell_size) + game.hold_piece.pos[i].y * game.cell_size), .w = game.cell_size, .h = game.cell_size };
+            drawRectColor(hold_cell, game.hold_piece.color);
         }
     }
 
@@ -784,22 +784,22 @@ fn render_frame() void {
     for (0..game.check_mat.len) |i| {
         for (0..game.check_mat[i].len) |j| {
             if (game.check_mat[i][j] > 0) {
-                const cell = Quad{ .x = i32ToFloat(game.playfield_pos.x + usizeToI32(j) * game.cell_size), .y = i32ToFloat(game.playfield_pos.y + usizeToI32(i) * game.cell_size), .w = game.cell_size, .h = game.cell_size };
+                const cell = Rect{ .x = i32ToFloat(game.playfield_pos.x + usizeToI32(j) * game.cell_size), .y = i32ToFloat(game.playfield_pos.y + usizeToI32(i) * game.cell_size), .w = game.cell_size, .h = game.cell_size };
                 // check this ajsdasdj
-                render_quad(cell, getPieceFromEnum(@as(ShapeID, @enumFromInt(game.check_mat[i][j]))).color);
+                drawRectColor(cell, getPieceFromEnum(@as(ShapeID, @enumFromInt(game.check_mat[i][j]))).color);
             }
         }
     }
 
     for (0..4) |i| {
         for (0..4) |j| {
-            const cell = Quad{
+            const cell = Rect{
                 .x = i32ToFloat(game.piece_bag[i].pos[j].x * game.cell_size + game.piece_bag_preview.x + (game.cell_size * 2)),
                 .y = i32ToFloat(game.piece_bag[i].pos[j].y * game.cell_size + game.piece_bag_preview.y + (usizeToI32(i) * 4 * game.cell_size)),
                 .w = game.cell_size,
                 .h = game.cell_size,
             };
-            render_quad(cell, game.piece_bag[i].color);
+            drawRectColor(cell, game.piece_bag[i].color);
         }
     }
 
@@ -907,6 +907,9 @@ export fn frame() void {
     state.quad_count = 0;
     state.vertex_count = 0;
     state.index_count = 0;
+    state.char_count = 0;
+    state.char_vertex_count = 0;
+    state.char_index_count = 0;
     state.bind.vertex_buffer_offsets[0] = 0;
     state.bind.index_buffer_offset = 0;
 
@@ -917,8 +920,10 @@ export fn frame() void {
 
     sg.beginPass(.{ .action = state.pass_action, .swapchain = sglue.swapchain() });
 
-    //  render_frame();
+    render_frame();
 
+    drawRectColor(.{ .x = 100, .y = 100, .w = 32, .h = 32 }, Colors.red);
+    drawRectColor(.{ .x = 100, .y = 100, .w = 32, .h = 32 }, Colors.red);
     drawText(.{ .x = 10, .y = 10 }, format, Colors.white);
 
     var vertices = state.vertices[0..state.vertex_count];
@@ -933,7 +938,7 @@ export fn frame() void {
         index_offset = sg.appendBuffer(state.bind.index_buffer, sg.asRange(indices));
     }
 
-    state.bind.images[0] = state.font_atlas;
+    state.bind.images[0] = state.color_texture;
     sg.applyPipeline(state.pip);
     sg.applyBindings(state.bind);
     sg.applyUniforms(tex_quad.UB_vs_params, sg.asRange(&state.vs_params));
@@ -943,27 +948,24 @@ export fn frame() void {
     state.vertex_count = 0;
     state.index_count = 0;
 
-    drawRectColor(.{ .x = 100, .y = 100, .w = 32, .h = 32 }, Colors.red);
-    drawRectColor(.{ .x = 100, .y = 100, .w = 32, .h = 32 }, Colors.red);
-
-    vertices = state.vertices[0..state.vertex_count];
-    indices = state._quad_indices[0..state.index_count];
-    if (state.quad_count > 0) {
+    vertices = state.char_vertices[0..state.char_vertex_count];
+    indices = state.char_indices[0..state.char_index_count];
+    if (state.char_count > 0) {
         vertex_offset = sg.appendBuffer(state.bind.vertex_buffers[0], .{
             .ptr = vertices.ptr,
-            .size = state.vertex_count * @sizeOf(Vertex),
+            .size = state.char_vertex_count * @sizeOf(Vertex),
         });
         index_offset = sg.appendBuffer(state.bind.index_buffer, sg.asRange(indices));
     }
 
-    state.bind.images[0] = state.color_texture;
+    state.bind.images[0] = state.font_atlas;
     state.bind.vertex_buffer_offsets[0] = vertex_offset;
     state.bind.index_buffer_offset = index_offset;
     sg.applyPipeline(state.pip);
     sg.applyBindings(state.bind);
     sg.applyUniforms(tex_quad.UB_vs_params, sg.asRange(&state.vs_params));
 
-    sg.draw(0, state.quad_count * 6, 1);
+    sg.draw(0, state.char_count * 6, 1);
     sg.endPass();
     sg.commit();
 }
