@@ -186,7 +186,7 @@ fn drawRectColor(rect: Rect, color: ColorRGB) void {
 
 fn getCharUV(char: u8) Vec4f {
     const char_pos = Vec2f{
-        .x = @as(f32, @floatFromInt(((@as(i32, @intCast(char)) - 46) * 8))),
+        .x = @as(f32, @floatFromInt(((@as(i32, @intCast(char)) - 33) * 8))),
         .y = 0,
     };
     const _u0: f32 = char_pos.x / @as(f32, @floatFromInt(game.charset.width));
@@ -206,21 +206,21 @@ fn drawText(pos: Vec2f, text: []const u8, color: ColorRGB) void {
             .color = .{ .x = rgbToFloat(color.r), .y = rgbToFloat(color.g), .z = rgbToFloat(color.b), .w = 1.0 },
         });
         pushCharVertex(.{
-            .pos = .{ .x = _pos.x + 7 * 5, .y = _pos.y },
+            .pos = .{ .x = _pos.x + 7 * 2, .y = _pos.y },
             .uv = .{ .x = uv.z, .y = uv.y },
             .color = .{ .x = rgbToFloat(color.r), .y = rgbToFloat(color.g), .z = rgbToFloat(color.b), .w = 1.0 },
         });
         pushCharVertex(.{
-            .pos = .{ .x = _pos.x, .y = _pos.y + 7 * 5 },
+            .pos = .{ .x = _pos.x, .y = _pos.y + 7 * 2 },
             .uv = .{ .x = uv.x, .y = uv.w },
             .color = .{ .x = rgbToFloat(color.r), .y = rgbToFloat(color.g), .z = rgbToFloat(color.b), .w = 1.0 },
         });
         pushCharVertex(.{
-            .pos = .{ .x = _pos.x + 7 * 5, .y = _pos.y + 7 * 5 },
+            .pos = .{ .x = _pos.x + 7 * 2, .y = _pos.y + 7 * 2 },
             .uv = .{ .x = uv.z, .y = uv.w },
             .color = .{ .x = rgbToFloat(color.r), .y = rgbToFloat(color.g), .z = rgbToFloat(color.b), .w = 1.0 },
         });
-        _pos.x += 7 * 5 + 5;
+        _pos.x += 7 * 2 + 2;
 
         pushCharIndex((@as(i16, @intCast(state.char_count)) * 4) + 0);
         pushCharIndex((@as(i16, @intCast(state.char_count)) * 4) + 1);
@@ -295,11 +295,11 @@ const Timer = struct {
     fn getElapsedInMs(self: *Timer) f64 {
         return stime.ms(self.elapsed_time);
     }
-    fn getElapsedInSecs(self: *Timer) f64 {
-        return stime.sec(self.elapsed_time);
+    fn getElapsedInSecs(self: *Timer) u64 {
+        return @as(u64, @intFromFloat(@floor(stime.sec(self.elapsed_time))));
     }
-    fn getElapsedInMins(self: *Timer) f64 {
-        return self.getElapsedInSecs() / 60.0;
+    fn getElapsedInMins(self: *Timer) u64 {
+        return @as(u64, @intFromFloat(@as(f32, @floatFromInt(self.getElapsedInSecs())) / 60.0));
     }
 };
 
@@ -384,6 +384,7 @@ const game = struct {
     var piece_is_hold: bool = false;
     var can_hold: bool = false;
     var charset: zstbi.Image = undefined;
+    var pieces_placed: u16 = 0;
 
     const input = struct {
         var up: bool = false;
@@ -550,6 +551,7 @@ fn placePiece() void {
     }
     game.piece_exists = false;
     game.can_hold = true;
+    game.pieces_placed += 1;
 }
 
 fn hardDrop() void {
@@ -803,6 +805,17 @@ fn render_frame() void {
         }
     }
 
+    var timer_buf: [12]u8 = .{0} ** 12;
+    const timer_text = std.fmt.bufPrint(&timer_buf, "TIME {d}:{d}", .{ game.timer.getElapsedInMins() % 60, game.timer.getElapsedInSecs() % 60 }) catch unreachable;
+    var lines_buf: [10]u8 = .{0} ** 10;
+    const lines_text = std.fmt.bufPrint(&lines_buf, "LINES {d}", .{game.lines_cleared}) catch unreachable;
+    var pieces_buf: [10]u8 = .{0} ** 10;
+    const pieces_text = std.fmt.bufPrint(&pieces_buf, "PIECES {d}", .{game.pieces_placed}) catch unreachable;
+
+    drawText(.{ .x = @as(f32, @floatFromInt(game.playfield_pos.x - timer_text.len * 21)), .y = @as(f32, @floatFromInt(game.playfield_pos.y + game.rows * game.cell_size)) }, timer_text, Colors.white);
+    drawText(.{ .x = @as(f32, @floatFromInt(game.playfield_pos.x - lines_text.len * 21)), .y = @as(f32, @floatFromInt((game.playfield_pos.y + game.rows * game.cell_size) - 64)) }, lines_text, Colors.white);
+    drawText(.{ .x = @as(f32, @floatFromInt(game.playfield_pos.x - pieces_text.len * 21)), .y = @as(f32, @floatFromInt(game.playfield_pos.y + game.rows * game.cell_size - 32)) }, pieces_text, Colors.white);
+
     game.input.up = false;
     game.input.down = false;
     game.input.left = false;
@@ -915,16 +928,9 @@ export fn frame() void {
 
     game.timer.update();
 
-    var buf: [10]u8 = .{0} ** 10;
-    const format = std.fmt.bufPrint(&buf, "{d:.2}", .{game.timer.getElapsedInSecs()}) catch unreachable;
-
     sg.beginPass(.{ .action = state.pass_action, .swapchain = sglue.swapchain() });
 
     render_frame();
-
-    drawRectColor(.{ .x = 100, .y = 100, .w = 32, .h = 32 }, Colors.red);
-    drawRectColor(.{ .x = 100, .y = 100, .w = 32, .h = 32 }, Colors.red);
-    drawText(.{ .x = 10, .y = 10 }, format, Colors.white);
 
     var vertices = state.vertices[0..state.vertex_count];
     var indices = state._quad_indices[0..state.index_count];
