@@ -285,7 +285,12 @@ const Timer = struct {
     }
 
     fn pause(self: *Timer) void {
-        self.*.state = .paused;
+        if (self.state == .paused) {
+            self.*.state = .running;
+        } else {
+            self.*.state = .paused;
+            self.*.start_time = self.elapsed_time;
+        }
     }
 
     fn getElapsedInNs(self: *Timer) f64 {
@@ -385,6 +390,7 @@ const game = struct {
     var can_hold: bool = false;
     var charset: zstbi.Image = undefined;
     var pieces_placed: u16 = 0;
+    var pause: bool = false;
 
     const input = struct {
         var up: bool = false;
@@ -395,6 +401,7 @@ const game = struct {
         var rotate_counter_cw: bool = false;
         var c: bool = false;
         var space: bool = false;
+        var pause: bool = false;
     };
     var check_mat: [rows][cols]i32 = .{.{0} ** cols} ** rows;
     var frames: u64 = 0;
@@ -713,48 +720,54 @@ fn printBagInfo() void {
 // maybe rename to tick or something
 fn render_frame() void {
     game.timer.update();
-    if (game.input.left) {
-        game.current_piece.offset.x -= 1;
-        checkPieceCollision(1);
+    if (game.input.pause) {
+        game.pause = !game.pause;
+        game.timer.pause();
     }
-    if (game.input.right) {
-        game.current_piece.offset.x += 1;
-        checkPieceCollision(2);
-    }
-
-    if (game.input.rotate_cw) {
-        _ = rotatePiece(Rotation.cw);
-        checkPieceCollision(1);
-    }
-    if (game.input.rotate_counter_cw) {
-        _ = rotatePiece(Rotation.counter_cw);
-        checkPieceCollision(2);
-    }
-    if (game.input.space) {
-        hardDrop();
-    }
-    if (game.input.c) {
-        _ = holdPiece();
-    }
-
-    if (!game.piece_exists) {
-        if (game.bag_piece_count <= 7) {
-            refillBag();
+    if (!game.pause) {
+        if (game.input.left) {
+            game.current_piece.offset.x -= 1;
+            checkPieceCollision(1);
         }
-        game.current_piece = getNextBagPiece();
-        game.current_piece.offset.x = 3;
-        game.current_piece.offset.y = 0;
-        game.piece_exists = true;
-    }
-
-    if (game.frames % 14 == 0) {
-        if (checkPlacePiece()) {
-            placePiece();
-        } else {
-            game.current_piece.offset.y += 1;
+        if (game.input.right) {
+            game.current_piece.offset.x += 1;
+            checkPieceCollision(2);
         }
+
+        if (game.input.rotate_cw) {
+            _ = rotatePiece(Rotation.cw);
+            checkPieceCollision(1);
+        }
+        if (game.input.rotate_counter_cw) {
+            _ = rotatePiece(Rotation.counter_cw);
+            checkPieceCollision(2);
+        }
+        if (game.input.space) {
+            hardDrop();
+        }
+        if (game.input.c) {
+            _ = holdPiece();
+        }
+
+        if (!game.piece_exists) {
+            if (game.bag_piece_count <= 7) {
+                refillBag();
+            }
+            game.current_piece = getNextBagPiece();
+            game.current_piece.offset.x = 3;
+            game.current_piece.offset.y = 0;
+            game.piece_exists = true;
+        }
+
+        if (game.frames % 14 == 0) {
+            if (checkPlacePiece()) {
+                placePiece();
+            } else {
+                game.current_piece.offset.y += 1;
+            }
+        }
+        game.lines_cleared += clearLines();
     }
-    game.lines_cleared += clearLines();
 
     // renders playfield
     drawRectColor(.{ .x = i32ToFloat(game.playfield_pos.x - game.cell_size), .y = i32ToFloat(game.playfield_pos.y), .w = game.cell_size, .h = game.cell_size * game.rows }, .{ .r = 255, .g = 255, .b = 255 });
@@ -809,12 +822,17 @@ fn render_frame() void {
     const timer_text = std.fmt.bufPrint(&timer_buf, "TIME {d}:{d}", .{ game.timer.getElapsedInMins() % 60, game.timer.getElapsedInSecs() % 60 }) catch unreachable;
     var lines_buf: [10]u8 = .{0} ** 10;
     const lines_text = std.fmt.bufPrint(&lines_buf, "LINES {d}", .{game.lines_cleared}) catch unreachable;
-    var pieces_buf: [10]u8 = .{0} ** 10;
+    var pieces_buf: [15]u8 = .{0} ** 15;
     const pieces_text = std.fmt.bufPrint(&pieces_buf, "PIECES {d}", .{game.pieces_placed}) catch unreachable;
 
     drawText(.{ .x = @as(f32, @floatFromInt(game.playfield_pos.x - timer_text.len * 21)), .y = @as(f32, @floatFromInt(game.playfield_pos.y + game.rows * game.cell_size)) }, timer_text, Colors.white);
     drawText(.{ .x = @as(f32, @floatFromInt(game.playfield_pos.x - lines_text.len * 21)), .y = @as(f32, @floatFromInt((game.playfield_pos.y + game.rows * game.cell_size) - 64)) }, lines_text, Colors.white);
     drawText(.{ .x = @as(f32, @floatFromInt(game.playfield_pos.x - pieces_text.len * 21)), .y = @as(f32, @floatFromInt(game.playfield_pos.y + game.rows * game.cell_size - 32)) }, pieces_text, Colors.white);
+    drawText(.{ .x = @as(f32, @floatFromInt(game.playfield_pos.x + (game.cols + 2) * game.cell_size)), .y = @as(f32, @floatFromInt(game.playfield_pos.y - (2 * game.cell_size))) }, "NEXT", Colors.white);
+    drawText(.{ .x = @as(f32, @floatFromInt(game.playfield_pos.x - 5 * game.cell_size)), .y = @as(f32, @floatFromInt(game.playfield_pos.y - (2 * game.cell_size))) }, "HOLD", Colors.white);
+    if (game.pause) {
+        drawText(.{ .x = @as(f32, @floatFromInt(game.playfield_pos.x + game.cols / 2 * game.cell_size - 5 * 7)), .y = @as(f32, @floatFromInt(game.playfield_pos.y + game.rows / 2 * game.cell_size)) }, "PAUSE", Colors.white);
+    }
 
     game.input.up = false;
     game.input.down = false;
@@ -824,6 +842,7 @@ fn render_frame() void {
     game.input.rotate_cw = false;
     game.input.space = false;
     game.input.c = false;
+    game.input.pause = false;
 
     game.frames += 1;
 }
@@ -926,8 +945,6 @@ export fn frame() void {
     state.bind.vertex_buffer_offsets[0] = 0;
     state.bind.index_buffer_offset = 0;
 
-    game.timer.update();
-
     sg.beginPass(.{ .action = state.pass_action, .swapchain = sglue.swapchain() });
 
     render_frame();
@@ -1004,6 +1021,9 @@ export fn input_cb(e: ?*const sapp.Event) void {
             },
             .SPACE => {
                 game.input.space = true;
+            },
+            .P => {
+                game.input.pause = true;
             },
 
             else => {},
