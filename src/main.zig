@@ -9,7 +9,6 @@ const sglue = sokol.glue;
 const stime = sokol.time;
 const m = @import("math.zig");
 const Vec4 = m.Vec4;
-const shader_quad = @import("shaders/quad.glsl.zig");
 const tex_quad = @import("shaders/tex_quad.glsl.zig");
 
 inline fn floatToUsize(f: f32) usize {
@@ -228,7 +227,7 @@ fn drawRectColor(rect: Rect, color: ColorRGB) void {
 
 fn getCharUV(char: u8) Vec4f {
     const char_pos = Vec2f{
-        .x = @as(f32, @floatFromInt(((@as(i32, @intCast(char)) - 33) * 8))),
+        .x = @as(f32, @floatFromInt(((@as(i32, @intCast(char)) - 32) * 8))),
         .y = 0,
     };
     const _u0: f32 = char_pos.x / @as(f32, @floatFromInt(game.charset.width));
@@ -854,6 +853,7 @@ export fn init() void {
     defer zstbi.deinit();
 
     game.charset = zstbi.Image.loadFromFile("assets/charset.png", 4) catch unreachable;
+
     var desc: sg.ImageDesc = .{
         .width = @as(i32, @intCast(game.charset.width)),
         .height = @as(i32, @intCast(game.charset.height)),
