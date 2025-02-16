@@ -738,7 +738,7 @@ fn gameTick() void {
     }
 
     var timer_buf: [12]u8 = .{0} ** 12;
-    const timer_text = std.fmt.bufPrint(&timer_buf, "TIME {d}:{d}", .{ game.timer.getElapsedInMins() % 60, game.timer.getElapsedInSecs() % 60 }) catch unreachable;
+    const timer_text = std.fmt.bufPrint(&timer_buf, "TIME {d:0>1}:{d:0>2}", .{ game.timer.getElapsedInMins() % 60, game.timer.getElapsedInSecs() % 60 }) catch unreachable;
     var lines_buf: [10]u8 = .{0} ** 10;
     const lines_text = std.fmt.bufPrint(&lines_buf, "LINES {d}", .{game.lines_cleared}) catch unreachable;
     var pieces_buf: [15]u8 = .{0} ** 15;
