@@ -447,7 +447,7 @@ fn clearLines() u8 {
     var lines_cleared: u8 = 0;
     var i: i32 = game.rows - 1;
     var j: usize = 0;
-    while (i >= 0) : (i -= 1) {
+    while (i >= 0) {
         j = 0;
         while (j < game.cols) : (j += 1) {
             if (game.check_mat[i32ToUsize(i)][j] < 1) {
@@ -471,6 +471,9 @@ fn clearLines() u8 {
                 }
             }
             lines_cleared += 1;
+            continue;
+        } else {
+            i -= 1;
         }
     }
 
@@ -525,6 +528,7 @@ fn hardDrop() void {
     }
     game.current_piece.offset.y = offset;
     placePiece();
+    game.lines_cleared += clearLines();
 }
 
 fn checkPieceCollision(dir: i32) void {
@@ -677,11 +681,11 @@ fn gameTick() void {
         if (game.frames % 14 == 0) {
             if (checkPlacePiece()) {
                 placePiece();
+                game.lines_cleared += clearLines();
             } else {
                 game.current_piece.offset.y += 1;
             }
         }
-        game.lines_cleared += clearLines();
     }
 
     // renders playfield
