@@ -2,6 +2,11 @@ const std = @import("std");
 const Build = std.Build;
 const sokol = @import("sokol");
 
+const Options = struct {
+    mod: *Build.Module,
+    dep_sokol: *Build.Dependency,
+};
+
 pub fn build(b: *Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -15,7 +20,7 @@ pub fn build(b: *Build) !void {
     });
 
     const mod_zigtris = b.createModule(.{
-        .root_source_file = b.path("src/main.zig"),
+        .root_source_file = b.path("src/zigtris.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{
@@ -25,52 +30,83 @@ pub fn build(b: *Build) !void {
     });
 
     // special case handling for native vs web build
-    if (target.result.isWasm()) {
-        try buildWeb(b, mod_zigtris, dep_sokol);
+    const opts = Options{ .mod = mod_zigtris, .dep_sokol = dep_sokol };
+    if (target.result.cpu.arch.isWasm()) {
+        try buildWeb(b, opts);
     } else {
-        try buildNative(b, mod_zigtris);
+        try buildNative(b, opts);
     }
 }
 
 // this is the regular build for all native platforms, nothing surprising here
-fn buildNative(b: *Build, mod: *Build.Module) !void {
+fn buildNative(b: *Build, opts: Options) !void {
     const exe = b.addExecutable(.{
         .name = "zigtris",
-        .root_module = mod,
+        .root_module = opts.mod,
     });
-    const zstbi = b.dependency("zstbi", .{});
-    exe.linkLibrary(zstbi.artifact("zstbi"));
+    const shd = try buildShader(b, opts.dep_sokol);
+    exe.step.dependOn(&shd.step);
     b.installArtifact(exe);
     const run = b.addRunArtifact(exe);
     b.step("run", "Run zigtris").dependOn(&run.step);
 }
 
 // for web builds, the Zig code needs to be built into a library and linked with the Emscripten linker
-fn buildWeb(b: *Build, mod: *Build.Module, dep_sokol: *Build.Dependency) !void {
+fn buildWeb(b: *Build, opts: Options) !void {
     const lib = b.addStaticLibrary(.{
         .name = "zigtris",
-        .root_module = mod,
+        .root_module = opts.mod,
     });
+    const shd = try buildShader(b, opts.dep_sokol);
+    lib.step.dependOn(&shd.step);
 
     // create a build step which invokes the Emscripten linker
-    const emsdk = dep_sokol.builder.dependency("emsdk", .{});
+    const emsdk = opts.dep_sokol.builder.dependency("emsdk", .{});
     const link_step = try sokol.emLinkStep(b, .{
         .lib_main = lib,
-        .target = mod.resolved_target.?,
-        .optimize = mod.optimize.?,
+        .target = opts.mod.resolved_target.?,
+        .optimize = opts.mod.optimize.?,
         .emsdk = emsdk,
-        .use_offset_converter = true,
-        .extra_args = &[_][]const u8{
-            "-sASSERTIONS",
-            "-g",
-        },
         .use_webgl2 = true,
         .use_emmalloc = true,
         .use_filesystem = false,
-        .shell_file_path = dep_sokol.path("src/sokol/web/shell.html"),
+        .shell_file_path = opts.dep_sokol.path("src/sokol/web/shell.html"),
     });
+    // attach Emscripten linker output to default install step
+    b.getInstallStep().dependOn(&link_step.step);
     // ...and a special run step to start the web build output via 'emrun'
     const run = sokol.emRunStep(b, .{ .name = "zigtris", .emsdk = emsdk });
     run.step.dependOn(&link_step.step);
     b.step("run", "Run zigtris").dependOn(&run.step);
+}
+
+// compile shader via sokol-shdc
+fn buildShader(b: *Build, dep_sokol: *Build.Dependency) !*Build.Step.Run {
+    var result: *Build.Step.Run = try sokol.shdc.compile(b, .{
+        .dep_shdc = dep_sokol.builder.dependency("shdc", .{}),
+        .input = b.path("src/quad.glsl"),
+        .output = b.path("src/quad.glsl.zig"),
+        .slang = .{
+            .glsl410 = true,
+            .glsl300es = true,
+            .hlsl4 = true,
+            .metal_macos = true,
+            .wgsl = true,
+        },
+    });
+
+    result = try sokol.shdc.compile(b, .{
+        .dep_shdc = dep_sokol.builder.dependency("shdc", .{}),
+        .input = b.path("src/tex_quad.glsl"),
+        .output = b.path("src/tex_quad.glsl.zig"),
+        .slang = .{
+            .glsl410 = true,
+            .glsl300es = true,
+            .hlsl4 = true,
+            .metal_macos = true,
+            .wgsl = true,
+        },
+    });
+
+    return result;
 }

@@ -9,7 +9,8 @@ const sglue = sokol.glue;
 const stime = sokol.time;
 const m = @import("math.zig");
 const Vec4 = m.Vec4;
-const tex_quad = @import("shaders/tex_quad.glsl.zig");
+const quad = @import("quad.glsl.zig");
+const tex_quad = @import("tex_quad.glsl.zig");
 
 inline fn floatToUsize(f: f32) usize {
     return @as(usize, @intFromFloat(f));
