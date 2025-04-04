@@ -1,6 +1,5 @@
 const std = @import("std");
 const print = std.debug.print;
-const zstbi = @import("zstbi");
 const sokol = @import("sokol");
 const slog = sokol.log;
 const sg = sokol.gfx;
@@ -8,9 +7,9 @@ const sapp = sokol.app;
 const sglue = sokol.glue;
 const stime = sokol.time;
 const m = @import("math.zig");
-const Vec4 = m.Vec4;
 const quad = @import("quad.glsl.zig");
 const tex_quad = @import("tex_quad.glsl.zig");
+const c = @import("c.zig");
 
 inline fn floatToUsize(f: f32) usize {
     return @as(usize, @intFromFloat(f));
@@ -152,8 +151,8 @@ const Vertex = struct {
     color: Vec4f = .{ .x = 0, .y = 0, .z = 0, .w = 0 },
 };
 
-fn rgbToFloat(c: u8) f32 {
-    return @as(f32, @floatFromInt(c)) / 255.0;
+fn rgbToFloat(color: u8) f32 {
+    return @as(f32, @floatFromInt(color)) / 255.0;
 }
 
 fn randColor() ColorRGB {
@@ -319,6 +318,42 @@ const Rotation = enum(u8) {
     counter_cw = 1,
 };
 
+const Image = struct {
+    data: []u8,
+    width: u32,
+    height: u32,
+    channels: u32,
+
+    fn loadFromFile(file: [:0]const u8) Image {
+        var width: u32 = 0;
+        var height: u32 = 0;
+        var channels: u32 = 0;
+
+        var c_width: c_int = 0;
+        var c_height: c_int = 0;
+        var c_channels: c_int = 0;
+        const c_data = c.stbi_load(file, &c_width, &c_height, &c_channels, 0);
+        defer c.stbi_image_free(c_data);
+        // TODO: error checking and check the free data thing
+        if (c_data == null) {
+            std.debug.print("error loading image from file: {s}", .{file});
+        }
+
+        width = @as(u32, @intCast(c_width));
+        height = @as(u32, @intCast(c_height));
+        channels = @as(u32, @intCast(c_channels));
+
+        const data = c_data[0..width * height * channels];
+
+        return Image{
+            .data = data,
+            .width = width,
+            .height = height,
+            .channels = channels,
+        };
+    }
+};
+
 const game = struct {
     const cell_size: i32 = 16;
     const rows: i32 = 20;
@@ -332,7 +367,7 @@ const game = struct {
     var hold_piece: Piece = .{ .pos = .{ .{}, .{}, .{}, .{} }, .offset = .{}, .id = .NONE, .color = .{} };
     var piece_is_hold: bool = false;
     var can_hold: bool = false;
-    var charset: zstbi.Image = undefined;
+    var charset: Image = undefined;
     var pieces_placed: u16 = 0;
     var pause: bool = false;
 
@@ -836,9 +871,9 @@ export fn init() void {
         },
         // hacky but worked
         .colors = init: {
-            var c = [4]sg.ColorTargetState{ .{}, .{}, .{}, .{} };
-            c[0].blend = blend;
-            break :init c;
+            var color = [4]sg.ColorTargetState{ .{}, .{}, .{}, .{} };
+            color[0].blend = blend;
+            break :init color;
         },
         .index_type = .UINT16,
     });
@@ -853,18 +888,18 @@ export fn init() void {
         std.posix.getrandom(std.mem.asBytes(&seed)) catch unreachable;
         break :blk seed;
     });
+    
+    game.charset = Image.loadFromFile("assets/charset.png");
 
-    zstbi.init(state.allocator);
-    defer zstbi.deinit();
-
-    game.charset = zstbi.Image.loadFromFile("assets/charset.png", 4) catch unreachable;
+    std.debug.print("stb_image version: {d}", .{c.STBI_VERSION});
 
     var desc: sg.ImageDesc = .{
         .width = @as(i32, @intCast(game.charset.width)),
         .height = @as(i32, @intCast(game.charset.height)),
         .pixel_format = .RGBA8,
     };
-    desc.data.subimage[0][0] = .{ .ptr = game.charset.data.ptr, .size = game.charset.width * game.charset.height * 4 };
+    desc.data.subimage[0][0] = .{ .ptr = game.charset.data.ptr, 
+                                  .size = game.charset.width * game.charset.height * 4 };
 
     var color_texture = sg.ImageDesc{
         .width = 1,
@@ -881,6 +916,8 @@ export fn init() void {
         .wrap_u = .REPEAT,
         .wrap_v = .REPEAT,
     });
+
+
 
     gameInit();
 }

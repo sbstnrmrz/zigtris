@@ -14,10 +14,6 @@ pub fn build(b: *Build) !void {
         .target = target,
         .optimize = optimize,
     });
-    const dep_zstbi = b.dependency("zstbi", .{
-        .target = target,
-        .optimize = optimize,
-    });
 
     const mod_zigtris = b.createModule(.{
         .root_source_file = b.path("src/zigtris.zig"),
@@ -25,9 +21,15 @@ pub fn build(b: *Build) !void {
         .optimize = optimize,
         .imports = &.{
             .{ .name = "sokol", .module = dep_sokol.module("sokol") },
-            .{ .name = "zstbi", .module = dep_zstbi.module("root") },
         },
+        .link_libc = true,
     });
+
+    mod_zigtris.addCSourceFile(.{
+        .file = b.path("src/stb_image.c"), 
+        .flags = &.{},
+    });
+    mod_zigtris.addIncludePath(b.path("src"));
 
     // special case handling for native vs web build
     const opts = Options{ .mod = mod_zigtris, .dep_sokol = dep_sokol };
