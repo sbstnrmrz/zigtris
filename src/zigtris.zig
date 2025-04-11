@@ -94,13 +94,13 @@ const Timer = struct {
     }
 
     fn start(self: *Timer) void {
-        self.*.start_time = stime.now();
+        self.*.start_time = stime.now() - self.elapsed_time;
         self.*.state = .running;
     }
 
     fn pause(self: *Timer) void {
         if (self.state == .paused) {
-            self.*.state = .running;
+            self.start();
         } else {
             self.*.state = .paused;
             self.*.start_time = self.elapsed_time;
@@ -776,9 +776,9 @@ fn gameTick() void {
     var timer_buf: [12]u8 = .{0} ** 12;
     const timer_text = std.fmt.bufPrint(&timer_buf, "TIME {d:0>1}:{d:0>2}", .{ game.timer.getElapsedInMins() % 60, game.timer.getElapsedInSecs() % 60 }) catch unreachable;
     var lines_buf: [10]u8 = .{0} ** 10;
-    const lines_text = std.fmt.bufPrint(&lines_buf, "LINES {d}", .{game.lines_cleared}) catch unreachable;
+    const lines_text = std.fmt.bufPrint(&lines_buf, "LINES: {d}", .{game.lines_cleared}) catch unreachable;
     var pieces_buf: [15]u8 = .{0} ** 15;
-    const pieces_text = std.fmt.bufPrint(&pieces_buf, "PIECES {d}", .{game.pieces_placed}) catch unreachable;
+    const pieces_text = std.fmt.bufPrint(&pieces_buf, "PIECES: {d}", .{game.pieces_placed}) catch unreachable;
 
     drawText(.{ .x = @as(f32, @floatFromInt(game.playfield_pos.x - timer_text.len * 21)), .y = @as(f32, @floatFromInt(game.playfield_pos.y + game.rows * game.cell_size)) }, timer_text, Colors.white);
     drawText(.{ .x = @as(f32, @floatFromInt(game.playfield_pos.x - lines_text.len * 21)), .y = @as(f32, @floatFromInt((game.playfield_pos.y + game.rows * game.cell_size) - 64)) }, lines_text, Colors.white);

@@ -58,6 +58,7 @@ fn buildWeb(b: *Build, opts: Options) !void {
     const lib = b.addStaticLibrary(.{
         .name = "zigtris",
         .root_module = opts.mod,
+        .link_libc = true,
     });
     const shd = try buildShader(b, opts.dep_sokol);
     lib.step.dependOn(&shd.step);
