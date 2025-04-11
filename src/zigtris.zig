@@ -58,6 +58,7 @@ const state = struct {
     var char_index_count: u32 = 0;
     var char_count: u32 = 0;
 
+
     var color_texture: sg.Image = undefined;
     var font_atlas: sg.Image = undefined;
 
@@ -370,6 +371,7 @@ const game = struct {
     var charset: Image = undefined;
     var pieces_placed: u16 = 0;
     var pause: bool = false;
+    var pause_blink: bool = false;
 
     const input = struct {
         var up: bool = false;
@@ -678,6 +680,7 @@ fn gameTick() void {
     if (game.input.pause) {
         game.pause = !game.pause;
         game.timer.pause();
+        game.pause_blink = false;
     }
     if (!game.pause) {
         if (game.input.left) {
@@ -786,7 +789,12 @@ fn gameTick() void {
     drawText(.{ .x = @as(f32, @floatFromInt(game.playfield_pos.x + (game.cols + 2) * game.cell_size)), .y = @as(f32, @floatFromInt(game.playfield_pos.y - (2 * game.cell_size))) }, "NEXT", Colors.white);
     drawText(.{ .x = @as(f32, @floatFromInt(game.playfield_pos.x - 5 * game.cell_size)), .y = @as(f32, @floatFromInt(game.playfield_pos.y - (2 * game.cell_size))) }, "HOLD", Colors.white);
     if (game.pause) {
-        drawText(.{ .x = @as(f32, @floatFromInt(game.playfield_pos.x + game.cols / 2 * game.cell_size - 5 * 7)), .y = @as(f32, @floatFromInt(game.playfield_pos.y + game.rows / 2 * game.cell_size)) }, "PAUSE", Colors.white);
+        if (game.frames % 40 == 0) {
+            game.pause_blink = !game.pause_blink;
+        }
+        if (!game.pause_blink) {
+            drawText(.{ .x = @as(f32, @floatFromInt(game.playfield_pos.x + game.cols / 2 * game.cell_size - 5 * 7)), .y = @as(f32, @floatFromInt(game.playfield_pos.y + game.rows / 2 * game.cell_size)) }, "PAUSE", Colors.white);
+        }
     }
 
     game.input.up = false;
