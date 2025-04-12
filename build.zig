@@ -27,7 +27,7 @@ pub fn build(b: *Build) !void {
 
     mod_zigtris.addCSourceFile(.{
         .file = b.path("src/stb_image.c"), 
-        .flags = &.{},
+        .flags = &.{"-fno-sanitize=undefined"},
     });
     mod_zigtris.addIncludePath(b.path("src"));
 
@@ -64,6 +64,8 @@ fn buildWeb(b: *Build, opts: Options) !void {
         .root_module = opts.mod,
         .link_libc = true,
     });
+
+
     const shader_paths = [_][]const u8{"src/tex_quad.glsl", "src/quad.glsl"};
     for (shader_paths) |shader_path| {
         const shd = try buildShader(b, opts.dep_sokol, shader_path);
@@ -72,6 +74,7 @@ fn buildWeb(b: *Build, opts: Options) !void {
 
     // create a build step which invokes the Emscripten linker
     const emsdk = opts.dep_sokol.builder.dependency("emsdk", .{});
+    lib.addSystemIncludePath(emsdk.path(b.pathJoin(&.{"upstream", "emscripten", "cache", "sysroot", "include"})));
     const link_step = try sokol.emLinkStep(b, .{
         .lib_main = lib,
         .target = opts.mod.resolved_target.?,
@@ -81,7 +84,10 @@ fn buildWeb(b: *Build, opts: Options) !void {
         .use_emmalloc = true,
         .use_filesystem = false,
         .shell_file_path = opts.dep_sokol.path("src/sokol/web/shell.html"),
+        .use_offset_converter = true,
     });
+
+
     // attach Emscripten linker output to default install step
     b.getInstallStep().dependOn(&link_step.step);
     // ...and a special run step to start the web build output via 'emrun'

@@ -337,7 +337,7 @@ const Image = struct {
         defer c.stbi_image_free(c_data);
         // TODO: error checking and check the free data thing
         if (c_data == null) {
-            std.debug.print("error loading image from file: {s}", .{file});
+            std.debug.print("error loading image from file: {s}\n", .{file});
         }
 
         width = @as(u32, @intCast(c_width));
@@ -783,9 +783,13 @@ fn gameTick() void {
     var pieces_buf: [15]u8 = .{0} ** 15;
     const pieces_text = std.fmt.bufPrint(&pieces_buf, "PIECES: {d}", .{game.pieces_placed}) catch unreachable;
 
-    drawText(.{ .x = @as(f32, @floatFromInt(game.playfield_pos.x - timer_text.len * 21)), .y = @as(f32, @floatFromInt(game.playfield_pos.y + game.rows * game.cell_size)) }, timer_text, Colors.white);
-    drawText(.{ .x = @as(f32, @floatFromInt(game.playfield_pos.x - lines_text.len * 21)), .y = @as(f32, @floatFromInt((game.playfield_pos.y + game.rows * game.cell_size) - 64)) }, lines_text, Colors.white);
-    drawText(.{ .x = @as(f32, @floatFromInt(game.playfield_pos.x - pieces_text.len * 21)), .y = @as(f32, @floatFromInt(game.playfield_pos.y + game.rows * game.cell_size - 32)) }, pieces_text, Colors.white);
+    const offset: i32 = 21;
+    drawText(.{ .x = @as(f32, @floatFromInt(game.playfield_pos.x - @as(i32, @intCast(timer_text.len)) * offset)), 
+                .y = @as(f32, @floatFromInt(game.playfield_pos.y + game.rows * game.cell_size)) }, 
+                timer_text,
+                Colors.white);
+    drawText(.{ .x = @as(f32, @floatFromInt(game.playfield_pos.x - @as(i32, @intCast(lines_text.len)) * offset)), .y = @as(f32, @floatFromInt((game.playfield_pos.y + game.rows * game.cell_size) - 64)) }, lines_text, Colors.white);
+    drawText(.{ .x = @as(f32, @floatFromInt(game.playfield_pos.x - @as(i32, @intCast(pieces_text.len)) * offset)), .y = @as(f32, @floatFromInt(game.playfield_pos.y + game.rows * game.cell_size - 32)) }, pieces_text, Colors.white);
     drawText(.{ .x = @as(f32, @floatFromInt(game.playfield_pos.x + (game.cols + 2) * game.cell_size)), .y = @as(f32, @floatFromInt(game.playfield_pos.y - (2 * game.cell_size))) }, "NEXT", Colors.white);
     drawText(.{ .x = @as(f32, @floatFromInt(game.playfield_pos.x - 5 * game.cell_size)), .y = @as(f32, @floatFromInt(game.playfield_pos.y - (2 * game.cell_size))) }, "HOLD", Colors.white);
     if (game.pause) {
