@@ -46,8 +46,12 @@ fn buildNative(b: *Build, opts: Options) !void {
         .name = "zigtris",
         .root_module = opts.mod,
     });
-    const shd = try buildShader(b, opts.dep_sokol);
-    exe.step.dependOn(&shd.step);
+    const shader_paths = [_][]const u8{"src/tex_quad.glsl", "src/quad.glsl"};
+    for (shader_paths) |shader_path| {
+        const shd = try buildShader(b, opts.dep_sokol, shader_path);
+        exe.step.dependOn(&shd.step);
+    }
+
     b.installArtifact(exe);
     const run = b.addRunArtifact(exe);
     b.step("run", "Run zigtris").dependOn(&run.step);
@@ -60,8 +64,11 @@ fn buildWeb(b: *Build, opts: Options) !void {
         .root_module = opts.mod,
         .link_libc = true,
     });
-    const shd = try buildShader(b, opts.dep_sokol);
-    lib.step.dependOn(&shd.step);
+    const shader_paths = [_][]const u8{"src/tex_quad.glsl", "src/quad.glsl"};
+    for (shader_paths) |shader_path| {
+        const shd = try buildShader(b, opts.dep_sokol, shader_path);
+        lib.step.dependOn(&shd.step);
+    }
 
     // create a build step which invokes the Emscripten linker
     const emsdk = opts.dep_sokol.builder.dependency("emsdk", .{});
@@ -84,24 +91,11 @@ fn buildWeb(b: *Build, opts: Options) !void {
 }
 
 // compile shader via sokol-shdc
-fn buildShader(b: *Build, dep_sokol: *Build.Dependency) !*Build.Step.Run {
-    var result: *Build.Step.Run = try sokol.shdc.compile(b, .{
+fn buildShader(b: *Build, dep_sokol: *Build.Dependency, shader_path: []const u8) !*Build.Step.Run {
+    const result: *Build.Step.Run = try sokol.shdc.compile(b, .{
         .dep_shdc = dep_sokol.builder.dependency("shdc", .{}),
-        .input = b.path("src/quad.glsl"),
-        .output = b.path("src/quad.glsl.zig"),
-        .slang = .{
-            .glsl410 = true,
-            .glsl300es = true,
-            .hlsl4 = true,
-            .metal_macos = true,
-            .wgsl = true,
-        },
-    });
-
-    result = try sokol.shdc.compile(b, .{
-        .dep_shdc = dep_sokol.builder.dependency("shdc", .{}),
-        .input = b.path("src/tex_quad.glsl"),
-        .output = b.path("src/tex_quad.glsl.zig"),
+        .input = b.path(shader_path),
+        .output = b.path(b.fmt("{s}.zig", .{shader_path})),
         .slang = .{
             .glsl410 = true,
             .glsl300es = true,
