@@ -1,3 +1,5 @@
+// TODO: check difference between initImage and makeImage
+
 const std = @import("std");
 const print = std.debug.print;
 const sokol = @import("sokol");
@@ -6,6 +8,7 @@ const sg = sokol.gfx;
 const sapp = sokol.app;
 const sglue = sokol.glue;
 const stime = sokol.time;
+const sfetch = sokol.fetch;
 const m = @import("math.zig");
 const quad = @import("quad.glsl.zig");
 const tex_quad = @import("tex_quad.glsl.zig");
@@ -61,6 +64,9 @@ const state = struct {
 
     var color_texture: sg.Image = undefined;
     var font_atlas: sg.Image = undefined;
+    var file_buffer: [512 * 1024]u8 = .{0} ** (512 * 1024);
+
+    var req_handle: sfetch.Handle = undefined;  
 
     var prng: std.Random.DefaultPrng = undefined;
 };
@@ -395,6 +401,7 @@ fn gameInit() void {
     game.can_hold = true;
     refillBag();
     game.timer.start();
+    std.debug.print("game initialized\n", .{});
 }
 
 fn getRandomPiece() Piece {
@@ -850,6 +857,10 @@ export fn init() void {
         .logger = .{ .func = slog.func },
     });
 
+    sfetch.setup(.{.max_requests = 1,
+                   .num_channels = 1,
+                   .num_lanes = 1});
+
     // a vertex buffer
     state.bind.vertex_buffers[0] = sg.makeBuffer(.{
         .size = state.max_rect_num * @sizeOf(Vertex),
@@ -900,18 +911,8 @@ export fn init() void {
         std.posix.getrandom(std.mem.asBytes(&seed)) catch unreachable;
         break :blk seed;
     });
-    
-    game.charset = Image.loadFromFile("assets/charset.png");
 
-    std.debug.print("stb_image version: {d}", .{c.STBI_VERSION});
-
-    var desc: sg.ImageDesc = .{
-        .width = @as(i32, @intCast(game.charset.width)),
-        .height = @as(i32, @intCast(game.charset.height)),
-        .pixel_format = .RGBA8,
-    };
-    desc.data.subimage[0][0] = .{ .ptr = game.charset.data.ptr, 
-                                  .size = game.charset.width * game.charset.height * 4 };
+    std.debug.print("stb_image version: {d}\n", .{c.STBI_VERSION});
 
     var color_texture = sg.ImageDesc{
         .width = 1,
@@ -921,7 +922,7 @@ export fn init() void {
     color_texture.data.subimage[0][0] = sg.asRange(&[_]u8{ 255, 255, 255, 255 });
 
     state.color_texture = sg.makeImage(color_texture);
-    state.font_atlas = sg.makeImage(desc);
+
     state.bind.samplers[0] = sg.makeSampler(.{
         .min_filter = .NEAREST,
         .mag_filter = .NEAREST,
@@ -929,9 +930,49 @@ export fn init() void {
         .wrap_v = .REPEAT,
     });
 
+    state.req_handle = sfetch.send(.{
+                  .path = "assets/charset.png",
+                  .buffer = sfetch.asRange(&state.file_buffer),
+                  .callback = &fetchCallback,
+    });
 
 
+
+    std.debug.print("handle: {}\n", .{sfetch.handleValid(state.req_handle)});
+    std.debug.print("sokol initialized\n", .{});
     gameInit();
+}
+
+fn fetchCallback(response: [*c]const sfetch.Response) callconv(.c) void {
+    std.debug.print("callback", .{});
+    if (response.*.fetched) {
+        std.debug.print("fetch success\n", .{});
+
+        game.charset = Image.loadFromFile("assets/charset.png");
+        var desc: sg.ImageDesc = .{
+            .width = @as(i32, @intCast(game.charset.width)),
+            .height = @as(i32, @intCast(game.charset.height)),
+            .pixel_format = .RGBA8,
+        };
+        desc.data.subimage[0][0] = .{ .ptr = game.charset.data.ptr, 
+                                      .size = game.charset.width * game.charset.height * 4 };
+        state.font_atlas = sg.makeImage(desc);
+    } else if (response.*.failed ){
+        std.debug.print("fetch failed\n", .{});
+        state.font_atlas = sg.makeImage(sg.ImageDesc{
+        .width = 4,
+        .height = 4,
+        .data = init: {
+            var data = sg.ImageData{};
+            data.subimage[0][0] = sg.asRange(&[4 * 4]u32{
+                0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF, 0xFF000000,
+                0xFF000000, 0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF,
+                0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF, 0xFF000000,
+                0xFF000000, 0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF,
+            });
+            break :init data;
+        }});
+    }
 }
 
 export fn frame() void {
@@ -944,7 +985,14 @@ export fn frame() void {
     state.bind.vertex_buffer_offsets[0] = 0;
     state.bind.index_buffer_offset = 0;
 
+
+    // TODO: this fetch works for some reason
+
+    sfetch.dowork();
+    sfetch.dowork();
     sg.beginPass(.{ .action = state.pass_action, .swapchain = sglue.swapchain() });
+    sfetch.dowork();
+    sfetch.dowork();
 
     gameTick();
 
@@ -980,6 +1028,7 @@ export fn frame() void {
         index_offset = sg.appendBuffer(state.bind.index_buffer, sg.asRange(indices));
     }
 
+    // TODO: check if only need to bind once on startup
     state.bind.images[0] = state.font_atlas;
     state.bind.vertex_buffer_offsets[0] = vertex_offset;
     state.bind.index_buffer_offset = index_offset;
@@ -1034,6 +1083,7 @@ export fn input_cb(e: ?*const sapp.Event) void {
 
 export fn cleanup() void {
     sg.shutdown();
+    sfetch.shutdown();
     _ = state.gpa.deinit();
 }
 
