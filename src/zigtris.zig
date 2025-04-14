@@ -409,6 +409,7 @@ const game = struct {
     var pieces_placed: u16 = 0;
     var pause: bool = false;
     var pause_blink: bool = false;
+    var pause_blink_frames: u64 = 0;
 
     const input = struct {
         var up: bool = false;
@@ -719,6 +720,7 @@ fn gameTick() void {
         game.pause = !game.pause;
         game.timer.pause();
         game.pause_blink = false;
+        game.pause_blink_frames = 0;
     }
     if (!game.pause) {
         if (game.input.left) {
@@ -830,13 +832,16 @@ fn gameTick() void {
     drawText(.{ .x = @as(f32, @floatFromInt(game.playfield_pos.x - @as(i32, @intCast(pieces_text.len)) * offset)), .y = @as(f32, @floatFromInt(game.playfield_pos.y + game.rows * game.cell_size - 32)) }, pieces_text, Colors.white);
     drawText(.{ .x = @as(f32, @floatFromInt(game.playfield_pos.x + (game.cols + 2) * game.cell_size)), .y = @as(f32, @floatFromInt(game.playfield_pos.y - (2 * game.cell_size))) }, "NEXT", Colors.white);
     drawText(.{ .x = @as(f32, @floatFromInt(game.playfield_pos.x - 5 * game.cell_size)), .y = @as(f32, @floatFromInt(game.playfield_pos.y - (2 * game.cell_size))) }, "HOLD", Colors.white);
+
     if (game.pause) {
-        if (game.frames % 40 == 0) {
+        if (game.pause_blink_frames > 0 and game.pause_blink_frames % 40 == 0) {
             game.pause_blink = !game.pause_blink;
         }
         if (!game.pause_blink) {
             drawText(.{ .x = @as(f32, @floatFromInt(game.playfield_pos.x + game.cols / 2 * game.cell_size - 5 * 7)), .y = @as(f32, @floatFromInt(game.playfield_pos.y + game.rows / 2 * game.cell_size)) }, "PAUSE", Colors.white);
         }
+
+        game.pause_blink_frames += 1;
     }
 
     game.input.up = false;
