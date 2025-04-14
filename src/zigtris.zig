@@ -13,6 +13,7 @@ const m = @import("math.zig");
 const quad = @import("quad.glsl.zig");
 const tex_quad = @import("tex_quad.glsl.zig");
 const c = @import("c.zig");
+const assets = @import("assets.zig");
 
 inline fn floatToUsize(f: f32) usize {
     return @as(usize, @intFromFloat(f));
@@ -65,8 +66,6 @@ const state = struct {
     var color_texture: sg.Image = undefined;
     var font_atlas: sg.Image = undefined;
     var file_buffer: [1024 * 2]u8 = .{0} ** (1024 * 2);
-
-    var req_handle: sfetch.Handle = undefined;  
 
     var prng: std.Random.DefaultPrng = undefined;
 };
@@ -889,11 +888,11 @@ export fn init() void {
         .logger = .{ .func = slog.func },
     });
 
-    sfetch.setup(.{.max_requests = 8,
-                   .num_channels = 4,
-                   .num_lanes = 4,
-                   .logger = .{.func = slog.func}
-    });
+//  sfetch.setup(.{.max_requests = 8,
+//                 .num_channels = 4,
+//                 .num_lanes = 4,
+//                 .logger = .{.func = slog.func}
+//  });
 
     // a vertex buffer
     state.bind.vertex_buffers[0] = sg.makeBuffer(.{
@@ -948,6 +947,17 @@ export fn init() void {
 
     print("stb_image version: {d}\n", .{c.STBI_VERSION});
 
+//  const data = @as([*]const u8, @ptrCast(assets.charset))[0..response.*.data.size];
+    game.charset = Image.loadFromMemory(&assets.charset);
+    var desc: sg.ImageDesc = .{
+        .width = @as(i32, @intCast(game.charset.width)),
+        .height = @as(i32, @intCast(game.charset.height)),
+        .pixel_format = .RGBA8,
+    };
+    desc.data.subimage[0][0] = .{ .ptr = game.charset.data.ptr, 
+        .size = game.charset.width * game.charset.height * 4 };
+    state.font_atlas = sg.makeImage(desc);
+
     var color_texture = sg.ImageDesc{
         .width = 1,
         .height = 1,
@@ -964,116 +974,108 @@ export fn init() void {
         .wrap_v = .REPEAT,
     });
 
-    state.req_handle = sfetch.send(.{
-                  .path = "assets/charset.png",
-                  .buffer = sfetch.asRange(&state.file_buffer),
-                  .callback = &fetchCallback,
-    });
-    sfetch.dowork();
+//  state.req_handle = sfetch.send(.{
+//                .path = "assets/charset.png",
+//                .buffer = sfetch.asRange(&state.file_buffer),
+//                .callback = &fetchCallback,
+//  });
 
-    print("handle: {}\n", .{sfetch.handleValid(state.req_handle)});
     print("sokol initialized\n", .{});
     gameInit();
 }
 
-fn fetchCallback(response: [*c]const sfetch.Response) callconv(.c) void {
-    std.debug.print("callback", .{});
-    if (response.*.fetched) {
-        std.debug.print("fetch success\n", .{});
-
-        const data = @as([*]const u8, @ptrCast(response.*.data.ptr.?))[0..response.*.data.size];
-        game.charset = Image.loadFromMemory(data);
-        var desc: sg.ImageDesc = .{
-            .width = @as(i32, @intCast(game.charset.width)),
-            .height = @as(i32, @intCast(game.charset.height)),
-            .pixel_format = .RGBA8,
-        };
-        desc.data.subimage[0][0] = .{ .ptr = game.charset.data.ptr, 
-                                      .size = game.charset.width * game.charset.height * 4 };
-        state.font_atlas = sg.makeImage(desc);
-    } else if (response.*.failed){
-        std.debug.print("fetch failed\n", .{});
-        state.font_atlas = sg.makeImage(sg.ImageDesc{
-        .width = 4,
-        .height = 4,
-        .data = init: {
-            var data = sg.ImageData{};
-            data.subimage[0][0] = sg.asRange(&[4 * 4]u32{
-                0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF, 0xFF000000,
-                0xFF000000, 0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF,
-                0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF, 0xFF000000,
-                0xFF000000, 0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF,
-            });
-            break :init data;
-        }});
-    }
-}
+//fn fetchCallback(response: [*c]const sfetch.Response) callconv(.c) void {
+//    std.debug.print("callback", .{});
+//    if (response.*.fetched) {
+//        std.debug.print("fetch success\n", .{});
+//
+//        const data = @as([*]const u8, @ptrCast(response.*.data.ptr.?))[0..response.*.data.size];
+//        game.charset = Image.loadFromMemory(data);
+//        var desc: sg.ImageDesc = .{
+//            .width = @as(i32, @intCast(game.charset.width)),
+//            .height = @as(i32, @intCast(game.charset.height)),
+//            .pixel_format = .RGBA8,
+//        };
+//        desc.data.subimage[0][0] = .{ .ptr = game.charset.data.ptr, 
+//                                      .size = game.charset.width * game.charset.height * 4 };
+//        state.font_atlas = sg.makeImage(desc);
+//    } else if (response.*.failed){
+//        std.debug.print("fetch failed\n", .{});
+//        state.font_atlas = sg.makeImage(sg.ImageDesc{
+//        .width = 4,
+//        .height = 4,
+//        .data = init: {
+//            var data = sg.ImageData{};
+//            data.subimage[0][0] = sg.asRange(&[4 * 4]u32{
+//                0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF, 0xFF000000,
+//                0xFF000000, 0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF,
+//                0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF, 0xFF000000,
+//                0xFF000000, 0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF,
+//            });
+//            break :init data;
+//        }});
+//    }
+//}
 
 export fn frame() void {
-    sfetch.dowork();
+    state.rect_count = 0;
+    state.vertex_count = 0;
+    state.index_count = 0;
+    state.char_count = 0;
+    state.char_vertex_count = 0;
+    state.char_index_count = 0;
+    state.bind.vertex_buffer_offsets[0] = 0;
+    state.bind.index_buffer_offset = 0;
 
-    // ugly hacky timer that lets sfetch.dowork() 'work', because if not the fetch doesnt fetch in the first frame of the program
-    if (stime.ms(stime.now()) > 1000.0) {
-        state.rect_count = 0;
-        state.vertex_count = 0;
-        state.index_count = 0;
-        state.char_count = 0;
-        state.char_vertex_count = 0;
-        state.char_index_count = 0;
-        state.bind.vertex_buffer_offsets[0] = 0;
-        state.bind.index_buffer_offset = 0;
+    sg.beginPass(.{ .action = state.pass_action, 
+        .swapchain = sglue.swapchain() 
+    });
 
-        sg.beginPass(.{ .action = state.pass_action, 
-            .swapchain = sglue.swapchain() 
+    gameTick();
+
+    var vertices = state.vertices[0..state.vertex_count];
+    var indices = state.rect_indices[0..state.index_count];
+    var vertex_offset: i32 = 0;
+    var index_offset: i32 = 0;
+    if (state.rect_count > 0) {
+        vertex_offset = sg.appendBuffer(state.bind.vertex_buffers[0], .{
+            .ptr = vertices.ptr,
+            .size = state.vertex_count * @sizeOf(Vertex),
         });
-
-        gameTick();
-
-        var vertices = state.vertices[0..state.vertex_count];
-        var indices = state.rect_indices[0..state.index_count];
-        var vertex_offset: i32 = 0;
-        var index_offset: i32 = 0;
-        if (state.rect_count > 0) {
-            vertex_offset = sg.appendBuffer(state.bind.vertex_buffers[0], .{
-                .ptr = vertices.ptr,
-                .size = state.vertex_count * @sizeOf(Vertex),
-            });
-            index_offset = sg.appendBuffer(state.bind.index_buffer, sg.asRange(indices));
-        }
-
-        state.bind.images[0] = state.color_texture;
-        sg.applyPipeline(state.pip);
-        sg.applyBindings(state.bind);
-        sg.applyUniforms(tex_quad.UB_vs_params, sg.asRange(&state.vs_params));
-        sg.draw(0, state.rect_count * 6, 1);
-
-        state.rect_count = 0;
-        state.vertex_count = 0;
-        state.index_count = 0;
-
-        vertices = state.char_vertices[0..state.char_vertex_count];
-        indices = state.char_indices[0..state.char_index_count];
-        if (state.char_count > 0) {
-            vertex_offset = sg.appendBuffer(state.bind.vertex_buffers[0], .{
-                .ptr = vertices.ptr,
-                .size = state.char_vertex_count * @sizeOf(Vertex),
-            });
-            index_offset = sg.appendBuffer(state.bind.index_buffer, sg.asRange(indices));
-        }
-
-        // TODO: check if only need to bind once on startup
-        state.bind.images[0] = state.font_atlas;
-        state.bind.vertex_buffer_offsets[0] = vertex_offset;
-        state.bind.index_buffer_offset = index_offset;
-        sg.applyPipeline(state.pip);
-        sg.applyBindings(state.bind);
-        sg.applyUniforms(tex_quad.UB_vs_params, sg.asRange(&state.vs_params));
-
-        sg.draw(0, state.char_count * 6, 1);
-        sg.endPass();
-        sg.commit();
-
+        index_offset = sg.appendBuffer(state.bind.index_buffer, sg.asRange(indices));
     }
+
+    state.bind.images[0] = state.color_texture;
+    sg.applyPipeline(state.pip);
+    sg.applyBindings(state.bind);
+    sg.applyUniforms(tex_quad.UB_vs_params, sg.asRange(&state.vs_params));
+    sg.draw(0, state.rect_count * 6, 1);
+
+    state.rect_count = 0;
+    state.vertex_count = 0;
+    state.index_count = 0;
+
+    vertices = state.char_vertices[0..state.char_vertex_count];
+    indices = state.char_indices[0..state.char_index_count];
+    if (state.char_count > 0) {
+        vertex_offset = sg.appendBuffer(state.bind.vertex_buffers[0], .{
+            .ptr = vertices.ptr,
+            .size = state.char_vertex_count * @sizeOf(Vertex),
+        });
+        index_offset = sg.appendBuffer(state.bind.index_buffer, sg.asRange(indices));
+    }
+
+    // TODO: check if only need to bind once on startup
+    state.bind.images[0] = state.font_atlas;
+    state.bind.vertex_buffer_offsets[0] = vertex_offset;
+    state.bind.index_buffer_offset = index_offset;
+    sg.applyPipeline(state.pip);
+    sg.applyBindings(state.bind);
+    sg.applyUniforms(tex_quad.UB_vs_params, sg.asRange(&state.vs_params));
+
+    sg.draw(0, state.char_count * 6, 1);
+    sg.endPass();
+    sg.commit();
 }
 
 export fn input_cb(e: ?*const sapp.Event) void {
@@ -1118,7 +1120,7 @@ export fn input_cb(e: ?*const sapp.Event) void {
 
 export fn cleanup() void {
     sg.shutdown();
-    sfetch.shutdown();
+//  sfetch.shutdown();
     _ = state.gpa.deinit();
 }
 
