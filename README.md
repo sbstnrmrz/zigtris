@@ -1,6 +1,6 @@
 # zigtris
 Made with [Zig](https://github.com/ziglang/zig) and [sokol](https://github.com/floooh/sokol-zig)
-![demoimg](assets/demoimg.png)
+![zigtris.gif](assets/zigtris.gif)
 
 # Building
 ```bash
