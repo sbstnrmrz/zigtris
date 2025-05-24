@@ -29,6 +29,10 @@ pub fn build(b: *Build) !void {
         .file = b.path("src/stb_image.c"), 
         .flags = &.{"-fno-sanitize=undefined"},
     });
+    mod_zigtris.addCSourceFile(.{
+        .file = b.path("src/dr_wav.c"), 
+        .flags = &.{"-fno-sanitize=undefined"},
+    });
     mod_zigtris.addIncludePath(b.path("src"));
 
     // special case handling for native vs web build

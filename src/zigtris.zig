@@ -8,6 +8,7 @@ const sg = sokol.gfx;
 const sapp = sokol.app;
 const sglue = sokol.glue;
 const stime = sokol.time;
+const saudio = sokol.audio;
 const sfetch = sokol.fetch;
 const m = @import("math.zig");
 const quad = @import("quad.glsl.zig");
@@ -66,6 +67,10 @@ const state = struct {
     var color_texture: sg.Image = undefined;
     var font_atlas: sg.Image = undefined;
     var file_buffer: [1024 * 2]u8 = .{0} ** (1024 * 2);
+
+    var audio_buffer: [1024]f32 = .{0} ** (1024);
+    var audio_buffer_pos: usize = 0;
+    var count: usize = 0;
 
     var prng: std.Random.DefaultPrng = undefined;
 };
@@ -392,6 +397,63 @@ const Image = struct {
     }
 };
 
+extern "c" fn malloc(size: usize) ?*anyopaque; // C malloc returns void* which is anyopaque
+extern "c" fn realloc(ptr: ?*anyopaque, size: usize) ?*anyopaque; // C realloc takes/returns void*
+extern "c" fn free(ptr: ?*anyopaque) void; // C free takes void*
+
+// --- Callback Implementations directly calling C functions ---
+
+fn cCallbackMalloc(size: usize, user_data: ?*anyopaque) callconv(.c) ?*anyopaque {
+    _ = user_data; // The context isn't needed when calling standard C malloc
+    // Directly call C's malloc
+    return malloc(size);
+}
+
+fn cCallbackRealloc(ptr: ?*anyopaque, new_size: usize, user_data: ?*anyopaque) callconv(.c) ?*anyopaque {
+    _ = user_data; // Context not needed for C realloc
+    // Directly call C's realloc. It handles null ptr and new_size == 0 correctly.
+    return realloc(ptr, new_size);
+}
+
+fn cCallbackFree(ptr: ?*anyopaque, user_data: ?*anyopaque) callconv(.c) void {
+    _ = user_data; // Context not needed for C free
+    // Directly call C's free. It handles null ptr correctly.
+    free(ptr);
+}
+
+const Sound = struct {
+    pcm_frames: []f32,
+    frame_count: u64 = 0,
+    channels: usize = 0,
+    sample_rate: usize = 0,
+
+    fn loadFromMemory(data: []const u8) Sound { 
+        const allocs: c.drwav_allocation_callbacks = .{ 
+            .onFree = cCallbackFree,
+            .onMalloc = cCallbackMalloc,
+            .onRealloc = cCallbackRealloc,
+        };
+
+        var c_channels: c_uint = 0;
+        var c_sample_rate: c_uint = 0;
+        var c_frame_count: c_ulonglong = 0;
+        const c_data = c.drwav_open_memory_and_read_pcm_frames_f32(data.ptr, 
+            data.len, 
+            &c_channels, 
+            &c_sample_rate, 
+            &c_frame_count, 
+            &allocs);
+
+        print("sound loaded\n", .{});
+        return Sound {
+            .pcm_frames = c_data[0..@as(u64, @intCast(c_frame_count))],
+            .frame_count = @as(u64, @intCast(c_frame_count)),
+            .channels = @as(usize, @intCast(c_channels)),
+            .sample_rate = @as(usize, @intCast(c_sample_rate)),
+        };
+    }
+};
+
 const game = struct {
     const cell_size: i32 = 16;
     const rows: i32 = 20;
@@ -410,6 +472,7 @@ const game = struct {
     var pause: bool = false;
     var pause_blink: bool = false;
     var pause_blink_frames: u64 = 0;
+    var sound_place_piece: Sound = undefined;
 
     const input = struct {
         var up: bool = false;
@@ -715,6 +778,18 @@ fn getNextBagPiece() Piece {
 }
 
 fn gameTick() void {
+    const num_frames = saudio.expect();
+    for (0..@as(usize, @intCast(num_frames))) |_| {
+        state.audio_buffer[state.audio_buffer_pos] = if (0 != (state.count & (1<<6))) 0.5 else -0.5; 
+        state.audio_buffer_pos += 1;
+        state.count += 1;
+
+        if (state.audio_buffer_pos == state.audio_buffer.len) {
+            state.audio_buffer_pos = 0;
+            _ = saudio.push(&(state.audio_buffer[0]), state.audio_buffer.len);
+        } 
+    }
+
     game.timer.update();
     if (game.input.pause) {
         game.pause = !game.pause;
@@ -985,6 +1060,14 @@ export fn init() void {
 //                .callback = &fetchCallback,
 //  });
 
+    saudio.setup(.{
+        .logger = .{.func = slog.func},
+    });
+    std.debug.assert(saudio.channels() == 1);
+
+    game.sound_place_piece = Sound.loadFromMemory(&assets.sound_place_piece);
+
+
     print("sokol initialized\n", .{});
     gameInit();
 }
@@ -1136,7 +1219,11 @@ pub fn main() !void {
         .cleanup_cb = cleanup,
         .width = win_width,
         .height = win_height,
-        .icon = .{ .sokol_default = true },
+        .icon = .{.images = .{sapp.ImageDesc{.width = 16, .height = 16, .pixels = .{.ptr = &assets.icon_16, .size = 16*16*4}},
+            sapp.ImageDesc{.width = 32, .height = 32, .pixels = .{.ptr = &assets.icon_32, .size = 32*32*4}}, 
+            sapp.ImageDesc{.width = 64, .height = 64, .pixels = .{.ptr = &assets.icon_64, .size = 64*64*4}},
+            .{}, .{}, .{}, .{}, .{}
+        }},
         .window_title = "zigtris",
         .logger = .{ .func = slog.func },
         .event_cb = input_cb,
