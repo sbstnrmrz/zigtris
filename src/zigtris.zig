@@ -1,4 +1,5 @@
 // TODO: check difference between initImage and makeImage
+// TODO: make check_mat with 3 rows for game over logic and so
 
 const std = @import("std");
 const print = std.debug.print;
@@ -397,62 +398,62 @@ const Image = struct {
     }
 };
 
-extern "c" fn malloc(size: usize) ?*anyopaque; // C malloc returns void* which is anyopaque
-extern "c" fn realloc(ptr: ?*anyopaque, size: usize) ?*anyopaque; // C realloc takes/returns void*
-extern "c" fn free(ptr: ?*anyopaque) void; // C free takes void*
-
-// --- Callback Implementations directly calling C functions ---
-
-fn cCallbackMalloc(size: usize, user_data: ?*anyopaque) callconv(.c) ?*anyopaque {
-    _ = user_data; // The context isn't needed when calling standard C malloc
-    // Directly call C's malloc
-    return malloc(size);
-}
-
-fn cCallbackRealloc(ptr: ?*anyopaque, new_size: usize, user_data: ?*anyopaque) callconv(.c) ?*anyopaque {
-    _ = user_data; // Context not needed for C realloc
-    // Directly call C's realloc. It handles null ptr and new_size == 0 correctly.
-    return realloc(ptr, new_size);
-}
-
-fn cCallbackFree(ptr: ?*anyopaque, user_data: ?*anyopaque) callconv(.c) void {
-    _ = user_data; // Context not needed for C free
-    // Directly call C's free. It handles null ptr correctly.
-    free(ptr);
-}
-
-const Sound = struct {
-    pcm_frames: []f32,
-    frame_count: u64 = 0,
-    channels: usize = 0,
-    sample_rate: usize = 0,
-
-    fn loadFromMemory(data: []const u8) Sound { 
-        const allocs: c.drwav_allocation_callbacks = .{ 
-            .onFree = cCallbackFree,
-            .onMalloc = cCallbackMalloc,
-            .onRealloc = cCallbackRealloc,
-        };
-
-        var c_channels: c_uint = 0;
-        var c_sample_rate: c_uint = 0;
-        var c_frame_count: c_ulonglong = 0;
-        const c_data = c.drwav_open_memory_and_read_pcm_frames_f32(data.ptr, 
-            data.len, 
-            &c_channels, 
-            &c_sample_rate, 
-            &c_frame_count, 
-            &allocs);
-
-        print("sound loaded\n", .{});
-        return Sound {
-            .pcm_frames = c_data[0..@as(u64, @intCast(c_frame_count))],
-            .frame_count = @as(u64, @intCast(c_frame_count)),
-            .channels = @as(usize, @intCast(c_channels)),
-            .sample_rate = @as(usize, @intCast(c_sample_rate)),
-        };
-    }
-};
+//extern "c" fn malloc(size: usize) ?*anyopaque; // C malloc returns void* which is anyopaque
+//extern "c" fn realloc(ptr: ?*anyopaque, size: usize) ?*anyopaque; // C realloc takes/returns void*
+//extern "c" fn free(ptr: ?*anyopaque) void; // C free takes void*
+//
+//// --- Callback Implementations directly calling C functions ---
+//
+//fn cCallbackMalloc(size: usize, user_data: ?*anyopaque) callconv(.c) ?*anyopaque {
+//    _ = user_data; // The context isn't needed when calling standard C malloc
+//    // Directly call C's malloc
+//    return malloc(size);
+//}
+//
+//fn cCallbackRealloc(ptr: ?*anyopaque, new_size: usize, user_data: ?*anyopaque) callconv(.c) ?*anyopaque {
+//    _ = user_data; // Context not needed for C realloc
+//    // Directly call C's realloc. It handles null ptr and new_size == 0 correctly.
+//    return realloc(ptr, new_size);
+//}
+//
+//fn cCallbackFree(ptr: ?*anyopaque, user_data: ?*anyopaque) callconv(.c) void {
+//    _ = user_data; // Context not needed for C free
+//    // Directly call C's free. It handles null ptr correctly.
+//    free(ptr);
+//}
+//
+//const Sound = struct {
+//    pcm_frames: []f32,
+//    frame_count: u64 = 0,
+//    channels: usize = 0,
+//    sample_rate: usize = 0,
+//
+//    fn loadFromMemory(data: []const u8) Sound { 
+//        const allocs: c.drwav_allocation_callbacks = .{ 
+//            .onFree = cCallbackFree,
+//            .onMalloc = cCallbackMalloc,
+//            .onRealloc = cCallbackRealloc,
+//        };
+//
+//        var c_channels: c_uint = 0;
+//        var c_sample_rate: c_uint = 0;
+//        var c_frame_count: c_ulonglong = 0;
+//        const c_data = c.drwav_open_memory_and_read_pcm_frames_f32(data.ptr, 
+//            data.len, 
+//            &c_channels, 
+//            &c_sample_rate, 
+//            &c_frame_count, 
+//            &allocs);
+//
+//        print("sound loaded\n", .{});
+//        return Sound {
+//            .pcm_frames = c_data[0..@as(u64, @intCast(c_frame_count))],
+//            .frame_count = @as(u64, @intCast(c_frame_count)),
+//            .channels = @as(usize, @intCast(c_channels)),
+//            .sample_rate = @as(usize, @intCast(c_sample_rate)),
+//        };
+//    }
+//};
 
 const game = struct {
     const cell_size: i32 = 16;
@@ -472,7 +473,7 @@ const game = struct {
     var pause: bool = false;
     var pause_blink: bool = false;
     var pause_blink_frames: u64 = 0;
-    var sound_place_piece: Sound = undefined;
+    var isOver: bool = false;
 
     const input = struct {
         var up: bool = false;
@@ -778,26 +779,36 @@ fn getNextBagPiece() Piece {
 }
 
 fn gameTick() void {
-    const num_frames = saudio.expect();
-    for (0..@as(usize, @intCast(num_frames))) |_| {
-        state.audio_buffer[state.audio_buffer_pos] = if (0 != (state.count & (1<<6))) 0.5 else -0.5; 
-        state.audio_buffer_pos += 1;
-        state.count += 1;
+//  const num_frames = saudio.expect();
+//  for (0..@as(usize, @intCast(num_frames))) |_| {
+//      state.audio_buffer[state.audio_buffer_pos] = if (0 != (state.count & (1<<6))) 0.5 else -0.5; 
+//      state.audio_buffer_pos += 1;
+//      state.count += 1;
 
-        if (state.audio_buffer_pos == state.audio_buffer.len) {
-            state.audio_buffer_pos = 0;
-            _ = saudio.push(&(state.audio_buffer[0]), state.audio_buffer.len);
-        } 
-    }
+//      if (state.audio_buffer_pos == state.audio_buffer.len) {
+//          state.audio_buffer_pos = 0;
+//          _ = saudio.push(&(state.audio_buffer[0]), state.audio_buffer.len);
+//      } 
+//  }
 
     game.timer.update();
-    if (game.input.pause) {
+    if (game.input.pause and !game.isOver) {
         game.pause = !game.pause;
         game.timer.pause();
         game.pause_blink = false;
         game.pause_blink_frames = 0;
     }
-    if (!game.pause) {
+
+    if (game.isOver) {
+        drawText(.{ 
+            .x = @as(f32, @floatFromInt(game.playfield_pos.x + game.cols / 2 * game.cell_size - 5 * 7 - 40)), 
+            .y = @as(f32, @floatFromInt(game.playfield_pos.y + game.rows / 2 * game.cell_size)) 
+        }, 
+        "GAME OVER!", 
+        Colors.white
+        );
+        game.pause = false;
+    } else if (!game.pause) {
         if (game.input.left) {
             game.current_piece.offset.x -= 1;
             checkPieceCollision(1);
@@ -839,6 +850,17 @@ fn gameTick() void {
             } else {
                 game.current_piece.offset.y += 1;
             }
+        }
+        
+        var check_game_over: bool = false;
+        for (0..game.cols) |i| {
+            if (game.check_mat[0][i] > 0) {
+                check_game_over = true;
+                break;
+            }        
+        }
+        if (check_game_over) {
+            game.isOver = true;
         }
     }
 
@@ -1059,14 +1081,6 @@ export fn init() void {
 //                .buffer = sfetch.asRange(&state.file_buffer),
 //                .callback = &fetchCallback,
 //  });
-
-    saudio.setup(.{
-        .logger = .{.func = slog.func},
-    });
-    std.debug.assert(saudio.channels() == 1);
-
-    game.sound_place_piece = Sound.loadFromMemory(&assets.sound_place_piece);
-
 
     print("sokol initialized\n", .{});
     gameInit();
